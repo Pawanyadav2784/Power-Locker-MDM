@@ -36,7 +36,12 @@ const dispatch = async (device, commandType, payload = {}, label = '', userId = 
   if (device.fcmToken) {
     const r = await sendFCM(device.fcmToken, commandType, label || commandType,
       { command: commandType, deviceId: device.deviceId, ...payload });
-    if (!r.success) { cmd.status = 'failed'; await cmd.save(); }
+    if (!r.success) {
+      // ✅ FCM fail hone pe bhi 'sent' rakho — device poll se utha lega
+      cmd.deliveryMethod = 'poll';
+      await cmd.save();
+      console.log(`⚠️ FCM failed for ${commandType}, falling back to poll for device ${device.deviceId}`);
+    }
   }
   return cmd;
 };

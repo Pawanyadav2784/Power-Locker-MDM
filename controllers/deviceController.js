@@ -147,7 +147,11 @@ const checkIn = async (req, res) => {
       await device.save();
     }
 
-    const pendingCommands = await Command.find({ deviceId: device._id, status: 'pending' });
+    // ✅ 'pending' aur 'sent' dono return karo — admin panel 'sent' se bhejta hai
+    const pendingCommands = await Command.find({
+      deviceId: device._id,
+      status: { $in: ['pending', 'sent'] }
+    }).sort({ createdAt: 1 });
     res.json({
       success: true,
       isLocked: device.isLocked,

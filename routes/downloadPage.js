@@ -16,7 +16,7 @@ router.get('/download', async (req, res) => {
 
   // ✅ GitHub APK URL as primary — no server hosting needed
   const APK_URL = process.env.APK_DOWNLOAD_URL ||
-    'https://github.com/Pawanyadav2784/mdmlocker/raw/main/PowerLocker-v1.0.apk';
+    'https://raw.githubusercontent.com/Pawanyadav2784/mdmlocker/main/PowerLocker-v1.0.apk';
 
   // Device info fetch karo
   let deviceInfo = null;

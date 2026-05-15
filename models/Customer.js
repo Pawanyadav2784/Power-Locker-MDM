@@ -23,6 +23,21 @@ const customerSchema = new mongoose.Schema({
   aadhar:         { type: String, default: '' },
   pan:            { type: String, default: '' },
 
+  // ── Key Type ───────────────────────────────────────────────
+  keyType: {
+    type: String,
+    enum: ['new_key', 'running_key', 'iphone_key'],
+    default: 'new_key',
+  },
+
+  // ── Device Details ────────────────────────────────────────
+  imei1:       { type: String, default: '' },
+  imei2:       { type: String, default: '' },
+  mobileNo:    { type: String, default: '' },
+
+  // ── Loan Provider ─────────────────────────────────────────
+  loanProvider: { type: String, default: '' },
+
   // ── Product Details ────────────────────────────────────────
   productName:    { type: String, default: '' },
   productPrice:   { type: Number, default: 0 },
@@ -49,8 +64,9 @@ const customerSchema = new mongoose.Schema({
   emiRemaining:  { type: Number, default: 0 },
   totalPaid:     { type: Number, default: 0 },
   totalAmount:   { type: Number, default: 0 },  // Full loan amount
-  loanStartDate: { type: Date },
-  nextEmiDate:   { type: Date },
+  loanStartDate:  { type: Date },
+  emiStartDate:   { type: Date },    // Next month ki EMI date
+  nextEmiDate:    { type: Date },
   lastEmiDate:   { type: Date },
   overdueCount:  { type: Number, default: 0 },
   overdueAmount: { type: Number, default: 0 },
@@ -74,10 +90,11 @@ const customerSchema = new mongoose.Schema({
   lockGraceDays:    { type: Number, default: 3 },     // Days after due before auto-lock
 
   // ── Documents ──────────────────────────────────────────────
-  agreementUrl: { type: String, default: '' },
-  photo:        { type: String, default: '' },
-  aadharPhoto:  { type: String, default: '' },
-  panPhoto:     { type: String, default: '' },
+  agreementUrl:       { type: String, default: '' },
+  photo:              { type: String, default: '' },   // Customer image
+  customerSignature:  { type: String, default: '' },   // Signature image URL
+  aadharPhoto:        { type: String, default: '' },
+  panPhoto:           { type: String, default: '' },
 
   // ── Notes ─────────────────────────────────────────────────
   internalNotes: { type: String, default: '' },

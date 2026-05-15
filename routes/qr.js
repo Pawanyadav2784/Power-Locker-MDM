@@ -1,62 +1,190 @@
 const express = require('express');
 const router = express.Router();
 const QRCode = require('qrcode');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const Device = require('../models/Device');
 const Customer = require('../models/Customer');
 const WalletTransaction = require('../models/WalletTransaction');
 const { protect } = require('../middleware/auth');
 
-// POST /api/qr/generate — Retailer creates customer + generates QR
-router.post('/generate', protect, async (req, res) => {
+// ── Multer config for customer images & signatures ──────────
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(__dirname, '../uploads/customers');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname) || '.jpg';
+    cb(null, `${Date.now()}-${file.fieldname}${ext}`);
+  },
+});
+const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
+
+const uploadFields = upload.fields([
+  { name: 'customerImage', maxCount: 1 },
+  { name: 'customerSignature', maxCount: 1 },
+]);
+
+// ── Key type → balance field map ─────────────────────────────
+const BALANCE_FIELD = {
+  new_key:     'androidBalance',
+  running_key: 'runningKeyBalance',
+  iphone_key:  'iphoneBalance',
+  android:     'androidBalance',
+  iphone:      'iphoneBalance',
+};
+
+// POST /api/qr/generate — Customer enroll + QR generate
+router.post('/generate', protect, uploadFields, async (req, res) => {
   try {
-    const { keyType = 'running_key' } = req.body;
+    const {
+      // Key type
+      keyType = 'running_key',
+      // Customer personal
+      name, phone, fatherName, address, city, state, aadhar, pan,
+      // Device
+      imei1, imei2, mobileNo,
+      // Loan
+      loanProvider,
+      // Payment
+      paymentType = 'with_emi',
+      emiMonths, emiStartDate, monthlyEmi, totalAmount, downPayment,
+      // Product
+      productName, productPrice,
+    } = req.body;
 
-    const balanceField = {
-      android:     'androidBalance',
-      running_key: 'runningKeyBalance',
-      iphone:      'iphoneBalance',
-    }[keyType];
-
-    const User = require('../models/User');
-    const retailer = await User.findById(req.user._id);
-    if (retailer[balanceField] < 1) {
-      return res.status(400).json({ success: false, message: 'Insufficient key balance' });
+    if (!name || !phone) {
+      return res.status(400).json({ success: false, message: 'Customer name aur phone required hai' });
     }
 
-    // Create device (auto device ID)
-    const device = await Device.create({ keyType, retailerId: req.user._id, status: 'pending' });
+    // ── Balance check ────────────────────────────────────────
+    const User = require('../models/User');
+    const retailer = await User.findById(req.user._id);
 
-    // Deduct balance
+    const balanceField = BALANCE_FIELD[keyType] || 'runningKeyBalance';
+    if (!retailer[balanceField] || retailer[balanceField] < 1) {
+      return res.status(400).json({
+        success: false,
+        message: `Insufficient key balance! Aapke paas ${keyType.replace(/_/g, ' ')} ke liye keys nahi hain.`
+      });
+    }
+
+    // ── File paths ───────────────────────────────────────────
+    const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
+    const files = req.files || {};
+    const photoUrl     = files.customerImage?.[0]
+      ? `/uploads/customers/${files.customerImage[0].filename}` : '';
+    const signatureUrl = files.customerSignature?.[0]
+      ? `/uploads/customers/${files.customerSignature[0].filename}` : '';
+
+    // ── Create Device ────────────────────────────────────────
+    const device = await Device.create({
+      keyType,
+      retailerId: req.user._id,
+      status: 'pending',
+      imei: imei1 || '',
+      imei2: imei2 || '',
+    });
+
+    // ── Create Customer ──────────────────────────────────────
+    const customer = await Customer.create({
+      name:             name.trim(),
+      phone:            phone.trim(),
+      fatherName:       fatherName || '',
+      address:          address || '',
+      city:             city || '',
+      state:            state || '',
+      aadhar:           aadhar || '',
+      pan:              pan || '',
+      keyType,
+      imei1:            imei1 || '',
+      imei2:            imei2 || '',
+      mobileNo:         mobileNo || phone,
+      loanProvider:     loanProvider || '',
+      paymentType:      paymentType,
+      emiMonths:        Number(emiMonths) || 0,
+      emiStartDate:     emiStartDate ? new Date(emiStartDate) : null,
+      nextEmiDate:      emiStartDate ? new Date(emiStartDate) : null,
+      monthlyEmi:       Number(monthlyEmi) || 0,
+      totalAmount:      Number(totalAmount) || 0,
+      downPayment:      Number(downPayment) || 0,
+      productName:      productName || '',
+      productPrice:     Number(productPrice) || 0,
+      photo:            photoUrl,
+      customerSignature: signatureUrl,
+      deviceId:         device._id,
+      retailerId:       req.user._id,
+      createdBy:        req.user._id,
+      status:           'pending',
+      qrCode:           device.deviceId,
+    });
+
+    // ── Link customer to device ──────────────────────────────
+    device.customerId = customer._id;
+    await device.save();
+
+    // ── Deduct balance ───────────────────────────────────────
     retailer[balanceField] -= 1;
     await retailer.save();
     await WalletTransaction.create({
-      userId: req.user._id, type: 'debit', keyType, amount: 1,
-      description: `Device created: ${device.deviceId}`, referenceId: device.deviceId,
+      userId:      req.user._id,
+      type:        'debit',
+      keyType,
+      amount:      1,
+      description: `Device created: ${device.deviceId} — ${name}`,
+      referenceId: device.deviceId,
     });
 
-    // APK URL — GitHub se ya server se
-    const APK_URL = process.env.APK_DOWNLOAD_URL ||
-      `${process.env.BASE_URL}/uploads/apk/app-release.apk`;
-
-    // QR mein web link daalo — scan karo → browser → APK download → app khule → enroll
-    // Format: BASE_URL/download?deviceId=XXX&type=running_key
-    const downloadUrl = `${process.env.BASE_URL}/download?deviceId=${device.deviceId}&type=${keyType}`;
-
-    const qrPayload = downloadUrl;  // Simple URL = camera directly browser mein kholta hai
-    const qrImage   = await QRCode.toDataURL(qrPayload, { errorCorrectionLevel: 'M', width: 400 });
+    // ── Generate QR ──────────────────────────────────────────
+    const downloadUrl = `${BASE_URL}/download?deviceId=${device.deviceId}&type=${keyType}`;
+    const qrImage = await QRCode.toDataURL(downloadUrl, {
+      errorCorrectionLevel: 'M',
+      width: 400,
+    });
 
     res.json({
-      success:    true,
-      deviceId:   device.deviceId,
+      success:     true,
+      deviceId:    device.deviceId,
       qrImage,
       downloadUrl,
-      apkUrl:     APK_URL,
+      apkUrl:      process.env.APK_DOWNLOAD_URL || `${BASE_URL}/uploads/apk/app-release.apk`,
       device,
+      customer: {
+        id:   customer._id,
+        name: customer.name,
+        phone: customer.phone,
+        keyType,
+      },
+      remainingBalance: retailer[balanceField],
     });
+  } catch (err) {
+    console.error('QR generate error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// GET /api/qr/get-qr/:deviceId — Existing device ka QR regenerate
+router.get('/get-qr/:deviceId', protect, async (req, res) => {
+  try {
+    const device = await Device.findOne({ deviceId: req.params.deviceId });
+    if (!device) return res.status(404).json({ success: false, message: 'Device not found' });
+
+    const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
+    const downloadUrl = `${BASE_URL}/download?deviceId=${device.deviceId}&type=${device.keyType}`;
+    const qrImage = await QRCode.toDataURL(downloadUrl, {
+      errorCorrectionLevel: 'M', width: 400,
+    });
+
+    res.json({ success: true, deviceId: device.deviceId, qrImage, downloadUrl });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
+
 
 
 // GET /api/qr/payload/:deviceId — Get QR payload JSON

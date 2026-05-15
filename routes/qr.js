@@ -76,8 +76,8 @@ router.post('/generate', protect, uploadFields, async (req, res) => {
       });
     }
 
-    // ── File paths ───────────────────────────────────────────
-    const BASE_URL = process.env.BASE_URL || (req.protocol + '://' + req.get('host'));
+    // ✅ ALWAYS use request host — no env var (avoids localhost bug on Render)
+    const BASE_URL = req.protocol + '://' + req.get('host');
     const APK_URL = process.env.APK_DOWNLOAD_URL || 'https://github.com/Pawanyadav2784/mdmlocker/raw/main/PowerLocker-v1.0.apk';
     const files = req.files || {};
     const photoUrl     = files.customerImage?.[0]
@@ -186,9 +186,10 @@ router.get('/get-qr/:deviceId', protect, async (req, res) => {
     const device = await Device.findOne({ deviceId: req.params.deviceId });
     if (!device) return res.status(404).json({ success: false, message: 'Device not found' });
 
-    const BASE_URL = process.env.BASE_URL || (req.protocol + '://' + req.get('host'));
+    // ✅ ALWAYS use request host
+    const BASE_URL = req.protocol + '://' + req.get('host');
     const APK_URL = process.env.APK_DOWNLOAD_URL || 'https://github.com/Pawanyadav2784/mdmlocker/raw/main/PowerLocker-v1.0.apk';
-    const downloadUrl = `${BASE_URL}/download?deviceId=${device.deviceId}&type=${device.keyType}`;
+    const downloadUrl = BASE_URL + '/download?deviceId=' + device.deviceId + '&type=' + device.keyType;
     const qrImage = await QRCode.toDataURL(downloadUrl, {
       errorCorrectionLevel: 'M', width: 400,
     });

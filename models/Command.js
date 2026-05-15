@@ -15,9 +15,14 @@ const commandSchema = new mongoose.Schema({
       // Communication
       'MESSAGE', 'PLAY_ALERT',
       // App Management
-      'INSTALL_APP', 'REMOVE_APP', 'UPDATE_APP',
+      'INSTALL_APP', 'REMOVE_APP', 'UPDATE_APP', 'MDM_APP_UPDATE',
       // Enrollment
-      'UNENROLL', 'ENROLL',
+      'UNENROLL', 'ENROLL', 'UNENROLL_DEVICE',
+      // Restrictions
+      'ACTIVE_RESTRICTION', 'DEACTIVE_RESTRICTION',
+      'DEBUGGING_ON', 'DEBUGGING_OFF',
+      'FACTORY_RESET_ON', 'FACTORY_RESET_OFF',
+      'SOCIALMEDIA_LOCK', 'SOCIALMEDIA_UNLOCK',
       // Custom
       'CUSTOM',
     ],
@@ -30,7 +35,7 @@ const commandSchema = new mongoose.Schema({
 
   deliveryMethod: {
     type: String,
-    enum: ['fcm', 'sms', 'both'],
+    enum: ['fcm', 'sms', 'both', 'poll'],  // 'poll' = FCM failed, device polll se lega
     default: 'fcm',
   },
 

@@ -62,7 +62,11 @@ router.post('/generate', protect, uploadFields, async (req, res) => {
 
     // ── Balance check ────────────────────────────────────────
     const User = require('../models/User');
-    const retailer = await User.findById(req.user._id);
+    const isAdmin = req.user.role === 'super_admin' || req.user.role === 'admin';
+    // Admin ki taraf se retailer ka ID body mein aa sakta hai (Enroll Customer popup)
+    const targetRetailerId = (isAdmin && req.body.retailerId) ? req.body.retailerId : req.user._id;
+    const retailer = await User.findById(targetRetailerId);
+    if (!retailer) return res.status(404).json({ success: false, message: 'Retailer not found' });
 
     const balanceField = BALANCE_FIELD[keyType] || 'runningKeyBalance';
     if (!retailer[balanceField] || retailer[balanceField] < 1) {
@@ -83,7 +87,7 @@ router.post('/generate', protect, uploadFields, async (req, res) => {
     // ── Create Device ────────────────────────────────────────
     const device = await Device.create({
       keyType,
-      retailerId: req.user._id,
+      retailerId: targetRetailerId,
       status: 'pending',
       imei: imei1 || '',
       imei2: imei2 || '',
@@ -116,7 +120,7 @@ router.post('/generate', protect, uploadFields, async (req, res) => {
       photo:            photoUrl,
       customerSignature: signatureUrl,
       deviceId:         device._id,
-      retailerId:       req.user._id,
+      retailerId:       targetRetailerId,
       createdBy:        req.user._id,
       status:           'pending',
       qrCode:           device.deviceId,
@@ -130,7 +134,7 @@ router.post('/generate', protect, uploadFields, async (req, res) => {
     retailer[balanceField] -= 1;
     await retailer.save();
     await WalletTransaction.create({
-      userId:      req.user._id,
+      userId:      targetRetailerId,
       type:        'debit',
       keyType,
       amount:      1,

@@ -77,7 +77,8 @@ router.post('/generate', protect, uploadFields, async (req, res) => {
     }
 
     // ── File paths ───────────────────────────────────────────
-    const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
+    const BASE_URL = process.env.BASE_URL || (req.protocol + '://' + req.get('host'));
+    const APK_URL = process.env.APK_DOWNLOAD_URL || 'https://github.com/Pawanyadav2784/mdmlocker/raw/main/PowerLocker-v1.0.apk';
     const files = req.files || {};
     const photoUrl     = files.customerImage?.[0]
       ? `/uploads/customers/${files.customerImage[0].filename}` : '';
@@ -143,18 +144,27 @@ router.post('/generate', protect, uploadFields, async (req, res) => {
     });
 
     // ── Generate QR ──────────────────────────────────────────
-    const downloadUrl = `${BASE_URL}/download?deviceId=${device.deviceId}&type=${keyType}`;
-    const qrImage = await QRCode.toDataURL(downloadUrl, {
-      errorCorrectionLevel: 'M',
-      width: 400,
-    });
+    // QR content per key type (new_key=JSON, others=URL)
+    let qrPayload, downloadUrl;
+    if (keyType === 'new_key') {
+      const crypto = require('crypto');
+      const secret = process.env.QR_SECRET || 'power-locker-mdm-secret';
+      const checksum = crypto.createHash('sha256').update(device.deviceId + secret).digest('hex').substring(0, 16);
+      downloadUrl = BASE_URL + '/download?deviceId=' + device.deviceId + '&type=new_key';
+      qrPayload = JSON.stringify({ deviceId: device.deviceId, server: BASE_URL, type: 'new_key', apk: APK_URL, checksum });
+    } else {
+      // running_key / iphone_key - browser URL -> download page -> APK
+      downloadUrl = BASE_URL + '/download?deviceId=' + device.deviceId + '&type=' + keyType;
+      qrPayload = downloadUrl;
+    }
+    const qrImage = await QRCode.toDataURL(qrPayload, { errorCorrectionLevel: 'M', width: 400 });
 
     res.json({
       success:     true,
       deviceId:    device.deviceId,
       qrImage,
       downloadUrl,
-      apkUrl:      process.env.APK_DOWNLOAD_URL || `${BASE_URL}/uploads/apk/app-release.apk`,
+      apkUrl: APK_URL,
       device,
       customer: {
         id:   customer._id,
@@ -176,7 +186,8 @@ router.get('/get-qr/:deviceId', protect, async (req, res) => {
     const device = await Device.findOne({ deviceId: req.params.deviceId });
     if (!device) return res.status(404).json({ success: false, message: 'Device not found' });
 
-    const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
+    const BASE_URL = process.env.BASE_URL || (req.protocol + '://' + req.get('host'));
+    const APK_URL = process.env.APK_DOWNLOAD_URL || 'https://github.com/Pawanyadav2784/mdmlocker/raw/main/PowerLocker-v1.0.apk';
     const downloadUrl = `${BASE_URL}/download?deviceId=${device.deviceId}&type=${device.keyType}`;
     const qrImage = await QRCode.toDataURL(downloadUrl, {
       errorCorrectionLevel: 'M', width: 400,

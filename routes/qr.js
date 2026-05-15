@@ -224,15 +224,18 @@ router.get('/payload/:deviceId', protect, async (req, res) => {
   }
 });
 
-// GET /api/qr/list — Retailer's QR list
+// GET /api/qr/list — Retailer's QR list (Admin = all, Retailer = own)
 router.get('/list', protect, async (req, res) => {
   try {
-    const { page = 1, limit = 20, status } = req.query;
-    const query = { retailerId: req.user._id };
+    const { page = 1, limit = 50, status } = req.query;
+    const isAdmin = req.user.role === 'super_admin' || req.user.role === 'admin';
+    // Admin ko sare devices dikho, retailer ko sirf apne
+    const query = isAdmin ? {} : { retailerId: req.user._id };
     if (status) query.status = status;
     const total = await Device.countDocuments(query);
     const devices = await Device.find(query)
       .populate('customerId', 'name phone')
+      .populate('retailerId', 'name company')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit));
@@ -241,6 +244,7 @@ router.get('/list', protect, async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+
 
 // POST /api/qr/enroll — MDM App calls this when QR scanned
 router.post('/enroll', async (req, res) => {

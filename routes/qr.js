@@ -273,9 +273,14 @@ router.post('/enroll', async (req, res) => {
     device.enrolledAt = new Date();
     await device.save();
 
-    // Update customer status
+    // ✅ Customer status + isActive update
     if (device.customerId) {
-      await Customer.findByIdAndUpdate(device.customerId, { status: 'active' });
+      await Customer.findByIdAndUpdate(
+        device.customerId,
+        { $set: { status: 'active', isActive: true } },
+        { runValidators: true }
+      );
+      console.log('Customer status updated to active:', device.customerId);
     }
 
     const customer = device.customerId ? await Customer.findById(device.customerId) : null;

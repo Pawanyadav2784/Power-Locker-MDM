@@ -26,8 +26,15 @@ const sendFCM = async (fcmToken, title, body, data = {}) => {
         Object.entries(data).map(([k, v]) => [k, String(v)])
       ),
       android: {
-        priority: 'high',
-        notification: { sound: 'default' },
+        priority: 'high',             // ✅ HIGH priority = doze mode mein bhi turant wake up
+        ttl: 60 * 1000,              // 60 second tak valid rakhna (0 = expire instantly)
+        notification: {
+          sound: 'default',
+          defaultSound: true,
+          notificationPriority: 'PRIORITY_MAX',  // Notification tray mein bhi top pe
+          channelId: 'mdm_commands', // Android 8+ ke liye channel chahiye
+          visibility: 'PUBLIC',
+        },
       },
     };
     const response = await admin.messaging().send(message);

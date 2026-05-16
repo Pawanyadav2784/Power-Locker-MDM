@@ -23,7 +23,17 @@ const sendFCM = async (fcmToken, title, body, data = {}) => {
       token: fcmToken,
       notification: { title, body },
       data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
-      android: { priority: 'high', notification: { sound: 'default' } },
+      android: {
+        priority: 'high',             // ✅ HIGH priority = doze mode mein bhi turant wake up
+        ttl: 60 * 1000,              // 60 sec valid
+        notification: {
+          sound: 'default',
+          defaultSound: true,
+          notificationPriority: 'PRIORITY_MAX',
+          channelId: 'mdm_commands',
+          visibility: 'PUBLIC',
+        },
+      },
     };
     const response = await admin.messaging().send(message);
     console.log(`✅ FCM sent: ${title} → ${response}`);

@@ -107,6 +107,29 @@ cron.schedule('* * * * *', async () => {
   }
 });
 
+// ─── Self-Ping: Render free tier ko jaagna rakhna (har 14 min) ────
+// Render free tier 15 min baad server so deta hai → cold start = 30-60 sec delay
+// Ye ping server ko hamesha active rakhta hai
+const http = require('http');
+const https = require('https');
+const SELF_URL = process.env.BASE_URL
+  ? process.env.BASE_URL.replace('/api', '/api/health')
+  : `http://localhost:${process.env.PORT || 5000}/api/health`;
+
+cron.schedule('*/14 * * * *', () => {
+  try {
+    const client = SELF_URL.startsWith('https') ? https : http;
+    client.get(SELF_URL, (res) => {
+      console.log(`🏓 Self-ping OK → ${SELF_URL} [${res.statusCode}]`);
+    }).on('error', (err) => {
+      console.warn(`⚠️ Self-ping failed: ${err.message}`);
+    });
+  } catch (err) {
+    console.warn('Self-ping error:', err.message);
+  }
+});
+console.log(`🏓 Self-ping cron started → every 14 min to prevent Render cold start`);
+
 // ─── Start Server ─────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

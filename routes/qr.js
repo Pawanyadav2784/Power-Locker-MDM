@@ -78,8 +78,8 @@ router.post('/generate', protect, uploadFields, async (req, res) => {
 
     // ✅ ALWAYS use request host — no env var (avoids localhost bug on Render)
     const BASE_URL = req.protocol + '://' + req.get('host');
-    // ❌ Env var ignore — Render pe galat APK_DOWNLOAD_URL set tha
-    const APK_URL = 'https://raw.githubusercontent.com/Pawanyadav2784/mdmlocker/main/PowerLocker-v1.0.apk';
+    // ✅ APK URL — env var se lo, fallback v3.0
+    const APK_URL = process.env.APK_DOWNLOAD_URL || 'https://raw.githubusercontent.com/Pawanyadav2784/mdmlocker/main/PowerLocker-v3.0.apk';
     const files = req.files || {};
     const photoUrl     = files.customerImage?.[0]
       ? `/uploads/customers/${files.customerImage[0].filename}` : '';

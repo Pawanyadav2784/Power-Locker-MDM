@@ -14,8 +14,8 @@ const Device  = require('../models/Device');
 router.get('/download', async (req, res) => {
   const { deviceId, type = 'running_key' } = req.query;
 
-  // ✅ Hardcoded correct URL — Render env var galat tha (runningkey instead of mdmlocker)
-  const APK_URL = 'https://raw.githubusercontent.com/Pawanyadav2784/mdmlocker/main/PowerLocker-v1.0.apk';
+  // ✅ Env var se APK URL lo — .env mein APK_DOWNLOAD_URL set karo
+  const APK_URL = process.env.APK_DOWNLOAD_URL || 'https://raw.githubusercontent.com/Pawanyadav2784/mdmlocker/main/PowerLocker-v3.0.apk';
 
   // Device info fetch karo
   let deviceInfo = null;

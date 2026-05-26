@@ -9,6 +9,7 @@ const {
   installApp, removeApp, getSimNumber, getNumber,
   updateCommandStatus, bulkCommand, setKioskMode,
   getDeviceCommands, softReset, hardReset,
+  releaseDevice,  // ← EMI complete ke baad FRP-safe release
 } = require('../controllers/deviceController');
 
 // ── Public (MDM App — no auth) ────────────────────────────
@@ -53,6 +54,12 @@ router.post('/remove-app',            protect, removeApp);
 // ── Bulk & Kiosk ─────────────────────────────────────────
 router.post('/bulk-command',          protect, bulkCommand);
 router.post('/kiosk',                 protect, setKioskMode);
+
+// ── Release Device — EMI Complete (FRP-safe) ─────────────────
+// POST /api/devices/release
+// Body: { deviceId, note? }
+// Auth: retailer/admin (role-based access)
+router.post('/release',               protect, releaseDevice);
 
 // ── Location (GET last known) ─────────────────────────────
 router.get('/location/:deviceId', protect, async (req, res) => {

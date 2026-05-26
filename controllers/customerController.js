@@ -561,6 +561,103 @@ const getCustomerStats = async (req, res) => {
 };
 
 // ══════════════════════════════════════════════════════════
+//  16. CHANGE KEY STATUS (Admin Panel Dropdown)
+//  POST /api/customers/:id/change-status
+//  Body: { status: 'active' | 'removed' }
+//
+//  'removed' → DEACTIVE_RESTRICTION  (phone free ho jata hai, MDM app installed rahe)
+//  'active'  → ACTIVE_RESTRICTION    (MDM fully active, sab commands kaam karte hain)
+// ══════════════════════════════════════════════════════════
+const changeKeyStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+
+    if (!['active', 'removed'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'status must be: active | removed',
+      });
+    }
+
+    // Customer + linked device fetch karo
+    const customer = await Customer.findById(req.params.id).populate('deviceId');
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'Customer not found' });
+    }
+
+    const device    = customer.deviceId;
+    const isRemove  = status === 'removed';
+
+    // ── 1. Customer DB update ──────────────────────────────
+    customer.status         = status;
+    customer.isDeviceLocked = false;  // Lock/unlock se alag hai ye
+    customer.lockReason     = isRemove ? 'key_removed' : '';
+    if (isRemove) customer.lastLockedAt   = new Date();
+    else          customer.lastUnlockedAt = new Date();
+    await customer.save();
+
+    // ── 2. Device DB update + MDM FCM command ─────────────
+    let mdmSent   = false;
+    let commandSent = '';
+
+    if (device) {
+      if (isRemove) {
+        // Key Remove → Saari MDM restrictions hat jayein (phone FREE)
+        // App installed rehti hai — dobara "Active" karne par wapas aa jaayegi
+        device.status   = 'unenrolled';  // soft remove
+        device.mdmActive = false;
+        await device.save();
+
+        await dispatchMDM(
+          device,
+          'DEACTIVE_RESTRICTION',
+          {},
+          'Key Removed — MDM Deactivated',
+          req.user._id
+        );
+        commandSent = 'DEACTIVE_RESTRICTION';
+        mdmSent     = true;
+
+      } else {
+        // Key Active → MDM wapas fully active ho jaye
+        device.status    = 'active';
+        device.mdmActive = true;
+        await device.save();
+
+        await dispatchMDM(
+          device,
+          'ACTIVE_RESTRICTION',
+          {},
+          'Key Active — MDM Reactivated',
+          req.user._id
+        );
+        commandSent = 'ACTIVE_RESTRICTION';
+        mdmSent     = true;
+      }
+
+      console.log(`✅ changeKeyStatus: ${customer.name} → ${status} | FCM: ${commandSent} → ${device.deviceId}`);
+    } else {
+      console.log(`⚠️ changeKeyStatus: ${customer.name} → ${status} | No device linked — only DB updated`);
+    }
+
+    res.json({
+      success:     true,
+      message:     isRemove
+        ? `✅ Key remove ho gaya — ${customer.name} ka phone free ho jayega`
+        : `✅ Key active ho gaya — ${customer.name} ka MDM active ho jayega, sab commands kaam karenge`,
+      status,
+      customerId:  customer._id,
+      deviceId:    device?.deviceId || null,
+      commandSent,
+      mdmSent,
+    });
+
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ══════════════════════════════════════════════════════════
 //  EXPORTS
 // ══════════════════════════════════════════════════════════
 module.exports = {
@@ -571,4 +668,5 @@ module.exports = {
   recordEmiPayment, getEmiHistory,
   getOverdueCustomers, searchCustomers,
   bulkAction, autoLockOverdue, getCustomerStats,
+  changeKeyStatus,  // ← NEW: Remove/Active dropdown → MDM command
 };

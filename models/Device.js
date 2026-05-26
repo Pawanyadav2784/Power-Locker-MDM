@@ -54,7 +54,7 @@ const deviceSchema = new mongoose.Schema({
   // ── Key / Subscription ────────────────────────────────────
   keyType: {
     type: String,
-    enum: ['android', 'running_key', 'iphone'],
+    enum: ['new_key', 'android', 'running_key', 'iphone'],
     default: 'running_key',
   },
   keyExpiryDate:   { type: Date },                  // When MDM key expires
@@ -63,7 +63,7 @@ const deviceSchema = new mongoose.Schema({
   // ── Device Status ─────────────────────────────────────────
   status: {
     type: String,
-    enum: ['pending', 'active', 'locked', 'removed', 'unenrolled', 'expired'],
+    enum: ['pending', 'active', 'locked', 'removed', 'unenrolled', 'expired', 'released'],
     default: 'pending',
   },
 
@@ -93,6 +93,11 @@ const deviceSchema = new mongoose.Schema({
 
   // ── Notes ─────────────────────────────────────────────────
   notes: { type: String, default: '' },
+
+  // ── Release Info ────────────────────────────────────
+  // EMI complete hone pe RELEASE_DEVICE command se set hota hai
+  releasedAt:  { type: Date, default: null },
+  releaseNote: { type: String, default: '' },  // e.g. "EMI complete on 24-May-2026"
 
 }, { timestamps: true });
 

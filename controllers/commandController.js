@@ -9,6 +9,7 @@
  *   GET_LOCATION | MESSAGE | PLAY_ALERT | GET_NUMBER
  *   INSTALL_APP | REMOVE_APP | UNENROLL
  *   SOCIAL_LOCK | SOCIAL_UNLOCK | APPLY_POLICY
+ *   RELEASE_DEVICE  ←← NEW: EMI complete ke baad full device release (FRP-safe)
  *   CUSTOM (kuch bhi bhejo)
  *
  * Device app endpoints (no auth):
@@ -59,6 +60,17 @@ const applyStateChange = async (device, command, payload) => {
     device.status = 'unenrolled'; device.isEnrolled = false; device.mdmActive = false;
   } else if (command === 'WIPE') {
     device.status = 'removed';
+  } else if (command === 'RELEASE_DEVICE') {
+    // EMI complete — device fully released
+    // FRP clear, Device Owner removed, app uninstalled
+    device.isLocked    = false;
+    device.status      = 'released';
+    device.mdmActive   = false;
+    device.isEnrolled  = false;
+    device.lockMessage = '';
+    device.lockPhone   = '';
+    device.releasedAt  = new Date();
+    device.releaseNote = payload?.note || 'EMI complete — device released by admin';
   }
   await device.save();
 };
@@ -84,6 +96,20 @@ const sendCommand = async (req, res) => {
 
     const device = await Device.findOne(filter);
     if (!device) return res.status(404).json({ success: false, message: 'Device not found or access denied' });
+
+    // ── RELEASED DEVICE GUARD ─────────────────────────────────
+    // EMI complete ke baad koi bhi command kaam nahi karega
+    // Sirf RELEASE_DEVICE allow hai (already released pe dobara chalao — no-op)
+    if (device.status === 'released' && cmd !== 'RELEASE_DEVICE') {
+      return res.status(403).json({
+        success:     false,
+        message:     `❌ Device ${device.deviceId} already released — koi bhi command kaam nahi karega. EMI complete ho chuka hai.`,
+        deviceId:    device.deviceId,
+        status:      'released',
+        releasedAt:  device.releasedAt,
+        releaseNote: device.releaseNote,
+      });
+    }
 
     // Build final payload per command type
     let finalPayload = { ...payload };

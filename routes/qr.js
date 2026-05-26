@@ -9,6 +9,55 @@ const Customer = require('../models/Customer');
 const WalletTransaction = require('../models/WalletTransaction');
 const { protect } = require('../middleware/auth');
 
+const MDM_PACKAGE_NAME = 'com.runningkey.mdm';
+const MDM_ADMIN_COMPONENT = `${MDM_PACKAGE_NAME}/${MDM_PACKAGE_NAME}.receivers.AdminReceiver`;
+const DEFAULT_APK_URL = 'https://raw.githubusercontent.com/Pawanyadav2784/mdmlocker/main/PowerLocker-v3.0.apk';
+let apkChecksumCache = { url: null, checksum: null };
+
+function toBase64Url(buffer) {
+  return buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+async function resolveApkProvisioningChecksum(apkUrl) {
+  const configuredChecksum = process.env.APK_PROVISIONING_CHECKSUM || process.env.APK_SHA256_CHECKSUM || '';
+  if (configuredChecksum.trim()) return configuredChecksum.trim();
+  if (apkChecksumCache.url === apkUrl && apkChecksumCache.checksum) return apkChecksumCache.checksum;
+  if (typeof fetch !== 'function') return '';
+
+  try {
+    const response = await fetch(apkUrl);
+    if (!response.ok) throw new Error(`APK download failed: ${response.status}`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const checksum = toBase64Url(require('crypto').createHash('sha256').update(bytes).digest());
+    apkChecksumCache = { url: apkUrl, checksum };
+    return checksum;
+  } catch (err) {
+    console.warn('APK provisioning checksum error:', err.message);
+    return '';
+  }
+}
+
+function buildProvisioningPayload({ deviceId, baseUrl, apkUrl, apkChecksum }) {
+  const payload = {
+    'android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME': MDM_ADMIN_COMPONENT,
+    'android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_NAME': MDM_PACKAGE_NAME,
+    'android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION': apkUrl,
+    'android.app.extra.PROVISIONING_SKIP_ENCRYPTION': true,
+    'android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED': true,
+    'android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE': {
+      deviceId,
+      server: baseUrl,
+      type: 'new_key',
+    },
+  };
+
+  if (apkChecksum) {
+    payload['android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_CHECKSUM'] = apkChecksum;
+  }
+
+  return JSON.stringify(payload);
+}
+
 // ── Multer config for customer images & signatures ──────────
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -79,7 +128,7 @@ router.post('/generate', protect, uploadFields, async (req, res) => {
     // ✅ ALWAYS use request host — no env var (avoids localhost bug on Render)
     const BASE_URL = req.protocol + '://' + req.get('host');
     // ✅ APK URL — env var se lo, fallback v3.0
-    const APK_URL = process.env.APK_DOWNLOAD_URL || 'https://raw.githubusercontent.com/Pawanyadav2784/mdmlocker/main/PowerLocker-v3.0.apk';
+    const APK_URL = process.env.APK_DOWNLOAD_URL || DEFAULT_APK_URL;
     const files = req.files || {};
     const photoUrl     = files.customerImage?.[0]
       ? `/uploads/customers/${files.customerImage[0].filename}` : '';
@@ -146,19 +195,27 @@ router.post('/generate', protect, uploadFields, async (req, res) => {
 
     // ── Generate QR ──────────────────────────────────────────
     // QR content per key type (new_key=JSON, others=URL)
-    let qrPayload, downloadUrl;
+    let qrPayload, downloadUrl, provisioningWarning;
     if (keyType === 'new_key') {
-      const crypto = require('crypto');
-      const secret = process.env.QR_SECRET || 'power-locker-mdm-secret';
-      const checksum = crypto.createHash('sha256').update(device.deviceId + secret).digest('hex').substring(0, 16);
       downloadUrl = BASE_URL + '/download?deviceId=' + device.deviceId + '&type=new_key';
-      qrPayload = JSON.stringify({ deviceId: device.deviceId, server: BASE_URL, type: 'new_key', apk: APK_URL, checksum });
+      const apkChecksum = await resolveApkProvisioningChecksum(APK_URL);
+      if (!apkChecksum) {
+        provisioningWarning = 'APK provisioning checksum missing. Set APK_PROVISIONING_CHECKSUM for strict Android setup wizard support.';
+      }
+      qrPayload = buildProvisioningPayload({
+        deviceId: device.deviceId,
+        baseUrl: BASE_URL,
+        apkUrl: APK_URL,
+        apkChecksum,
+      });
     } else {
       // running_key / iphone_key - browser URL -> download page -> APK
       downloadUrl = BASE_URL + '/download?deviceId=' + device.deviceId + '&type=' + keyType;
       qrPayload = downloadUrl;
     }
-    const qrImage = await QRCode.toDataURL(qrPayload, { errorCorrectionLevel: 'M', width: 400 });
+    // new_key provisioning QR: errorCorrectionLevel 'L' — payload bada hota hai, 'L' se dense nahi hoga
+    const qrEcLevel = keyType === 'new_key' ? 'L' : 'M';
+    const qrImage = await QRCode.toDataURL(qrPayload, { errorCorrectionLevel: qrEcLevel, width: 400 });
 
     res.json({
       success:     true,
@@ -166,6 +223,7 @@ router.post('/generate', protect, uploadFields, async (req, res) => {
       qrImage,
       downloadUrl,
       apkUrl: APK_URL,
+      provisioningWarning,
       device,
       customer: {
         id:   customer._id,
@@ -189,13 +247,27 @@ router.get('/get-qr/:deviceId', protect, async (req, res) => {
 
     // ✅ ALWAYS use request host
     const BASE_URL = req.protocol + '://' + req.get('host');
-    const APK_URL = process.env.APK_DOWNLOAD_URL || 'https://github.com/Pawanyadav2784/mdmlocker/raw/main/PowerLocker-v1.0.apk';
+    const APK_URL = process.env.APK_DOWNLOAD_URL || DEFAULT_APK_URL;
     const downloadUrl = BASE_URL + '/download?deviceId=' + device.deviceId + '&type=' + device.keyType;
-    const qrImage = await QRCode.toDataURL(downloadUrl, {
+    let qrPayload = downloadUrl;
+    let provisioningWarning;
+    if (device.keyType === 'new_key') {
+      const apkChecksum = await resolveApkProvisioningChecksum(APK_URL);
+      if (!apkChecksum) {
+        provisioningWarning = 'APK provisioning checksum missing. Set APK_PROVISIONING_CHECKSUM for strict Android setup wizard support.';
+      }
+      qrPayload = buildProvisioningPayload({
+        deviceId: device.deviceId,
+        baseUrl: BASE_URL,
+        apkUrl: APK_URL,
+        apkChecksum,
+      });
+    }
+    const qrImage = await QRCode.toDataURL(qrPayload, {
       errorCorrectionLevel: 'M', width: 400,
     });
 
-    res.json({ success: true, deviceId: device.deviceId, qrImage, downloadUrl });
+    res.json({ success: true, deviceId: device.deviceId, qrImage, downloadUrl, apkUrl: APK_URL, provisioningWarning });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

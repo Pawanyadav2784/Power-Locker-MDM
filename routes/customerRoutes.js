@@ -9,6 +9,7 @@ const {
   recordEmiPayment, getEmiHistory,
   getOverdueCustomers, searchCustomers,
   bulkAction, autoLockOverdue, getCustomerStats,
+  changeKeyStatus,
 } = require('../controllers/customerController');
 
 // ── Stats & Search (specific routes first) ─────────────────
@@ -36,6 +37,9 @@ router.delete('/:id',               protect, deleteCustomer);
 // ── Device Linking ────────────────────────────────────────
 router.post('/:id/link-device',     protect, linkDevice);
 router.post('/:id/unlink-device',   protect, unlinkDevice);
+
+// ── Key Status (Remove / Active) ────────────────────────
+router.post('/:id/change-status',   protect, changeKeyStatus);  // Remove → Lock | Active → Unlock
 
 // ── EMI ───────────────────────────────────────────────────
 router.get('/:id/emi',              protect, getEmiHistory);

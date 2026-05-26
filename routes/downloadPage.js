@@ -26,7 +26,7 @@ router.get('/download', async (req, res) => {
   }
 
   const isRunningKey = type === 'running_key';
-  const isNewPhone   = type === 'android' || type === 'iphone';
+  const isNewPhone   = type === 'new_key' || type === 'android' || type === 'iphone';
 
   // Deep link — agar app pehle se install hai toh directly khulega
   const deepLink = `mdm://enroll?deviceId=${deviceId}&type=${type}`;

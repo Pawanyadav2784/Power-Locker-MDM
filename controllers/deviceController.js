@@ -170,6 +170,17 @@ const lockDevice = async (req, res) => {
     const filter = req.user.role === 'super_admin' ? { deviceId } : { deviceId, retailerId: req.user._id };
     const device = await Device.findOne(filter);
     if (!device) return res.status(404).json({ success: false, message: 'Device not found' });
+
+    // ❌ Released device pe lock nahi chalega
+    if (device.status === 'released') {
+      return res.status(403).json({
+        success: false,
+        message: `Device ${deviceId} already released — lock command blocked. EMI complete ho chuka hai.`,
+        status: 'released',
+        releasedAt: device.releasedAt,
+      });
+    }
+
     device.isLocked = true;
     device.lockMessage = message || 'Device locked by administrator';
     device.lockPhone = phone_number || '';
@@ -186,9 +197,21 @@ const unlockDevice = async (req, res) => {
   try {
     const { deviceId } = req.body;
     const filter = req.user.role === 'super_admin' ? { deviceId } : { deviceId, retailerId: req.user._id };
-    const device = await Device.findOneAndUpdate(filter,
-      { isLocked: false, lockMessage: '', lockPhone: '', status: 'active' }, { new: true });
+    const device = await Device.findOne(filter);
     if (!device) return res.status(404).json({ success: false, message: 'Device not found' });
+
+    // ❌ Released device pe unlock nahi chalega
+    if (device.status === 'released') {
+      return res.status(403).json({
+        success: false,
+        message: `Device ${deviceId} already released — unlock command blocked. EMI complete ho chuka hai.`,
+        status: 'released',
+        releasedAt: device.releasedAt,
+      });
+    }
+
+    await Device.findOneAndUpdate(filter,
+      { isLocked: false, lockMessage: '', lockPhone: '', status: 'active' }, { new: true });
     await dispatchCommand(device, 'UNLOCK_DEVICE', {}, 'Unlock Device', req.user._id);
     res.json({ success: true, message: 'Unlock command sent' });
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
@@ -408,6 +431,86 @@ const hardReset = async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
 
+// ══ RELEASE DEVICE — EMI Complete (FRP-safe) ══════════════
+// POST /api/devices/release
+// Body: { deviceId, note? }
+//
+// Ye endpoint tab call karo jab:
+//   - Customer ka EMI poora ho jaye
+//   - Admin "Release Device" button click kare
+//
+// Kya hota hai:
+//   1. Server pe device status 'released' ho jaata hai
+//   2. RELEASE_DEVICE command device ko FCM se jaata hai
+//   3. Device pe:
+//      a. Enterprise FRP policy clear hoti hai
+//      b. Saari restrictions hatti hain
+//      c. Device Owner clear hota hai
+//      d. MDM app self-uninstall hoti hai
+// Result: Factory reset pe SIRF Google account maangega — MDM nahi
+const releaseDevice = async (req, res) => {
+  try {
+    const { deviceId, note } = req.body;
+    if (!deviceId) return res.status(400).json({ success: false, message: 'deviceId required' });
+
+    // Role-based filter: retailer sirf apna device release kar sakta hai
+    const filter = req.user.role === 'super_admin'
+      ? { deviceId }
+      : { deviceId, retailerId: req.user._id };
+
+    const device = await Device.findOne(filter);
+    if (!device) return res.status(404).json({ success: false, message: 'Device not found or access denied' });
+
+    // Already released check
+    if (device.status === 'released') {
+      return res.status(400).json({
+        success: false,
+        message: 'Device already released',
+        releasedAt: device.releasedAt,
+      });
+    }
+
+    // 1. DB mein update karo
+    device.isLocked    = false;
+    device.status      = 'released';
+    device.mdmActive   = false;
+    device.isEnrolled  = false;
+    device.lockMessage = '';
+    device.lockPhone   = '';
+    device.releasedAt  = new Date();
+    device.releaseNote = note || `EMI complete — released by ${req.user.name || req.user.role}`;
+    await device.save();
+
+    // 2. FCM se RELEASE_DEVICE command bhejo
+    const payload = {
+      note:        device.releaseNote,
+      releasedBy:  req.user.name || req.user.role,
+      releasedAt:  device.releasedAt.toISOString(),
+    };
+    const cmd = await dispatchCommand(
+      device,
+      'RELEASE_DEVICE',
+      payload,
+      'Release Device — EMI Complete',
+      req.user._id
+    );
+
+    console.log(`✅ RELEASE_DEVICE sent to ${deviceId} | cmd: ${cmd._id}`);
+
+    res.json({
+      success:    true,
+      message:    `✅ Device ${deviceId} released — FRP clear, MDM remove ho jayega`,
+      deviceId:   device.deviceId,
+      status:     device.status,
+      releasedAt: device.releasedAt,
+      releaseNote: device.releaseNote,
+      commandId:  cmd._id,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   getAllDevices, getDevice, registerDevice, updateDevice, deleteDevice,
   getStatistics, checkIn, updateDeviceInfo,
@@ -416,4 +519,5 @@ module.exports = {
   installApp, removeApp, getSimNumber, getNumber,
   updateCommandStatus, bulkCommand, setKioskMode,
   getDeviceCommands, softReset, hardReset, dispatchCommand,
+  releaseDevice,  // ← NEW: EMI complete ke baad FRP-safe device release
 };

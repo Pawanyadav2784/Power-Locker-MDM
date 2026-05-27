@@ -54,7 +54,7 @@ const deviceSchema = new mongoose.Schema({
   // ── Key / Subscription ────────────────────────────────────
   keyType: {
     type: String,
-    enum: ['new_key', 'android', 'running_key', 'iphone'],
+    enum: ['new_key', 'android', 'running_key', 'iphone', 'iphone_key'],
     default: 'running_key',
   },
   keyExpiryDate:   { type: Date },                  // When MDM key expires

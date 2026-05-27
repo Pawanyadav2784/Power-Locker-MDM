@@ -23,7 +23,7 @@ const walletTransactionSchema = new mongoose.Schema({
   // Key type
   keyType: {
     type: String,
-    enum: ['new_key', 'android', 'running_key', 'iphone'],
+    enum: ['new_key', 'android', 'running_key', 'iphone', 'iphone_key'],
     default: 'running_key',
   },
 

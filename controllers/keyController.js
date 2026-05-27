@@ -63,6 +63,124 @@ const updateBalance = async (userId, keyType, amount, type) => {
   return { before, after: user[field] };
 };
 
+const formatRole = (role = '') =>
+  String(role || '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase()) || '-';
+
+const getParty = (user, fallback = 'System') => {
+  if (!user) {
+    return { id: null, name: fallback, email: '', phone: '', role: 'system', roleLabel: 'System' };
+  }
+
+  return {
+    id: user._id || user.id || null,
+    _id: user._id || user.id || null,
+    name: user.name || user.company || user.email || user.phone || fallback,
+    email: user.email || '',
+    phone: user.phone || '',
+    role: user.role || user.userType || '',
+    roleLabel: formatRole(user.role || user.userType || ''),
+    company: user.company || '',
+  };
+};
+
+const getCounterpartyFor = (tx) => {
+  if (tx.type === 'debit') {
+    if (tx.toUserId) return getParty(tx.toUserId, 'Device / Customer');
+    if (tx.referenceId) {
+      return {
+        id: tx.referenceId,
+        _id: tx.referenceId,
+        name: tx.referenceId,
+        email: '',
+        phone: '',
+        role: 'device',
+        roleLabel: 'Device',
+        company: '',
+      };
+    }
+    return getParty(tx.createdBy, 'Debit');
+  }
+
+  if (tx.type === 'credit' || tx.type === 'credit_foc') {
+    return getParty(tx.fromUserId || tx.createdBy, 'Power Locker Admin');
+  }
+
+  return getParty(tx.createdBy, 'System');
+};
+
+const formatLedgerTransaction = (tx, perspectiveUserId = null) => {
+  const owner = getParty(tx.userId, 'Unknown User');
+  const counterparty = getCounterpartyFor(tx);
+  const isDebit = tx.type === 'debit';
+  const isCredit = tx.type === 'credit' || tx.type === 'credit_foc';
+
+  const sender = isDebit ? owner : counterparty;
+  const receiver = isDebit ? counterparty : owner;
+  const perspective = perspectiveUserId ? String(perspectiveUserId) : '';
+  const ownerId = owner.id ? String(owner.id) : '';
+  const counterpartyId = counterparty.id ? String(counterparty.id) : '';
+  const direction =
+    perspective && ownerId === perspective && isDebit ? 'out' :
+    perspective && ownerId === perspective && isCredit ? 'in' :
+    perspective && counterpartyId === perspective && isDebit ? 'in' :
+    perspective && counterpartyId === perspective && isCredit ? 'out' :
+    isDebit ? 'out' : isCredit ? 'in' : 'neutral';
+
+  return {
+    id: tx._id,
+    _id: tx._id,
+    transactionRef: tx._id,
+    type: tx.type,
+    action: isDebit ? 'Debit' : isCredit ? 'Credit' : formatRole(tx.type),
+    direction,
+    keyType: tx.keyType || 'running_key',
+    amount: Number(tx.amount || 0),
+    key: Number(tx.amount || 0),
+    units: Number(tx.amount || 0),
+    totalUnits: Number(tx.amount || 0),
+    balanceBefore: Number(tx.balanceBefore || 0),
+    balanceAfter: Number(tx.balanceAfter || 0),
+    totalBefore: Number(tx.balanceBefore || 0),
+    totalAfter: Number(tx.balanceAfter || 0),
+    sender,
+    receiver,
+    senderName: sender.name,
+    senderRole: sender.roleLabel,
+    receiverName: receiver.name,
+    receiverRole: receiver.roleLabel,
+    owner,
+    counterparty,
+    createdBy: getParty(tx.createdBy, 'System'),
+    description: tx.description || '',
+    note: tx.note || '',
+    referenceId: tx.referenceId || '',
+    status: tx.status || 'completed',
+    createdAt: tx.createdAt,
+    updatedAt: tx.updatedAt,
+  };
+};
+
+const buildLedgerSummary = (rows = [], user = null) => {
+  const totals = rows.reduce((acc, row) => {
+    if (row.type === 'debit') acc.totalDebit += row.amount;
+    if (row.type === 'credit' || row.type === 'credit_foc') acc.totalCredit += row.amount;
+    if (row.type === 'credit_foc') acc.totalFoc += row.amount;
+    if (row.type === 'request') acc.totalRequests += row.amount;
+    return acc;
+  }, { totalCredit: 0, totalDebit: 0, totalFoc: 0, totalRequests: 0 });
+
+  return {
+    ...totals,
+    totalUsed: totals.totalDebit,
+    totalReceived: totals.totalCredit + totals.totalFoc,
+    totalAvailable: user?.runningKeyBalance ?? 0,
+    netBalance: user?.runningKeyBalance ?? 0,
+    count: rows.length,
+  };
+};
+
 // ══════════════════════════════════════════════════════════
 //  🔑 SUPER ADMIN — Unlimited Key Generation
 //  Admin ka balance deduct NAHI hota
@@ -619,10 +737,13 @@ const getBalance = async (req, res) => {
 // @route  GET /api/keys/ledger
 const getLedger = async (req, res) => {
   try {
-    const { page = 1, limit = 20, keyType, type, from, to } = req.query;
+    const { page = 1, limit = 20, keyType, type, from, to, userId } = req.query;
 
     const isAdmin = req.user.role === 'super_admin';
-    const query   = isAdmin ? {} : { $or: [{ userId: req.user._id }, { toUserId: req.user._id }, { fromUserId: req.user._id }] };
+    const scopedUserId = isAdmin && userId ? userId : req.user._id;
+    const query = isAdmin && !userId
+      ? {}
+      : { $or: [{ userId: scopedUserId }, { toUserId: scopedUserId }, { fromUserId: scopedUserId }] };
 
     if (keyType) query.keyType = keyType;
     if (type)    query.type    = type;
@@ -634,25 +755,26 @@ const getLedger = async (req, res) => {
 
     const total        = await WalletTransaction.countDocuments(query);
     const transactions = await WalletTransaction.find(query)
-      .populate('userId',     'name email phone role')
-      .populate('createdBy',  'name email role')
-      .populate('toUserId',   'name email role')
-      .populate('fromUserId', 'name email role')
+      .populate('userId',     'name email phone role company')
+      .populate('createdBy',  'name email phone role company')
+      .populate('toUserId',   'name email phone role company')
+      .populate('fromUserId', 'name email phone role company')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit));
 
-    const summary = await WalletTransaction.aggregate([
-      { $match: isAdmin ? {} : { userId: req.user._id } },
-      { $group: { _id: { type: '$type', keyType: '$keyType' }, total: { $sum: '$amount' }, count: { $sum: 1 } } },
-    ]);
+    const ledger = transactions.map((tx) => formatLedgerTransaction(tx, userId || (!isAdmin ? req.user._id : null)));
+    const scopedUser = userId ? await User.findById(userId).select('runningKeyBalance') : (!isAdmin ? req.user : null);
+    const summary = buildLedgerSummary(ledger, scopedUser);
 
     res.json({
       success: true, total,
       totalPages:  Math.ceil(total / limit),
       currentPage: Number(page),
       summary,
-      data: transactions,
+      ledger,
+      data: ledger,
+      rawData: transactions,
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -682,24 +804,25 @@ const getLedgerAll = async (req, res) => {
     const total        = await WalletTransaction.countDocuments(query);
     const transactions = await WalletTransaction.find(query)
       .populate('userId',     'name email phone role company')
-      .populate('createdBy',  'name email role')
-      .populate('toUserId',   'name email role')
-      .populate('fromUserId', 'name email role')
+      .populate('createdBy',  'name email phone role company')
+      .populate('toUserId',   'name email phone role company')
+      .populate('fromUserId', 'name email phone role company')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit));
 
-    const totals = await WalletTransaction.aggregate([
-      { $match: query },
-      { $group: { _id: { type: '$type', keyType: '$keyType' }, total: { $sum: '$amount' }, count: { $sum: 1 } } },
-    ]);
+    const ledger = transactions.map((tx) => formatLedgerTransaction(tx));
+    const totals = buildLedgerSummary(ledger);
 
     res.json({
       success: true, total,
       totalPages:  Math.ceil(total / limit),
       currentPage: Number(page),
       totals,
-      data: transactions,
+      summary: totals,
+      ledger,
+      data: ledger,
+      rawData: transactions,
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -766,9 +889,10 @@ const getLedgerByUser = async (req, res) => {
 
     const total        = await WalletTransaction.countDocuments(query);
     const transactions = await WalletTransaction.find(query)
-      .populate('createdBy',  'name role')
-      .populate('toUserId',   'name role')
-      .populate('fromUserId', 'name role')
+      .populate('userId',     'name email phone role company')
+      .populate('createdBy',  'name email phone role company')
+      .populate('toUserId',   'name email phone role company')
+      .populate('fromUserId', 'name email phone role company')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit));
@@ -776,7 +900,20 @@ const getLedgerByUser = async (req, res) => {
     const user = await User.findById(req.params.userId)
       .select('name email role androidBalance runningKeyBalance iphoneBalance');
 
-    res.json({ success: true, total, totalPages: Math.ceil(total / limit), user, data: transactions });
+    const ledger = transactions.map((tx) => formatLedgerTransaction(tx, req.params.userId));
+    const summary = buildLedgerSummary(ledger, user);
+
+    res.json({
+      success: true,
+      total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: Number(page),
+      user,
+      summary,
+      ledger,
+      data: ledger,
+      rawData: transactions,
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

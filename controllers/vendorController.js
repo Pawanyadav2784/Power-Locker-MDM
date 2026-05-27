@@ -6,7 +6,10 @@
 //  Distributor       → Sub Distributor   (parentId = D._id)
 //  Sub Distributor   → Retailer          (parentId = SubD._id)
 // ─────────────────────────────────────────────────────────────
+const mongoose = require('mongoose');
 const User   = require('../models/User');
+const WalletTransaction = require('../models/WalletTransaction');
+const Device = require('../models/Device');
 const { generateToken } = require('../middleware/auth');
 
 // ── Who can create whom ────────────────────────────────────
@@ -36,6 +39,50 @@ const normalizeType = (type = '') => {
   if (t === 'company')                           return 'super_distributor';
   if (t === 'individual')                        return 'retailer';
   return 'retailer';
+};
+
+const attachKeyUsage = async (profiles = []) => {
+  const ids = profiles
+    .map((profile) => profile?._id || profile?.id)
+    .filter(Boolean);
+
+  if (!ids.length) return profiles;
+
+  const objectIds = ids
+    .map((id) => String(id))
+    .filter((id) => mongoose.Types.ObjectId.isValid(id))
+    .map((id) => new mongoose.Types.ObjectId(id));
+
+  if (!objectIds.length) return profiles;
+
+  const [usage, deviceUsage] = await Promise.all([
+    WalletTransaction.aggregate([
+      { $match: { userId: { $in: objectIds }, type: 'debit' } },
+      { $group: { _id: '$userId', totalUsed: { $sum: '$amount' } } },
+    ]),
+    Device.aggregate([
+      { $match: { retailerId: { $in: objectIds } } },
+      { $group: { _id: '$retailerId', totalUsed: { $sum: 1 } } },
+    ]),
+  ]);
+
+  const usageMap = new Map(
+    usage.map((item) => [String(item._id), item.totalUsed || 0])
+  );
+  const deviceUsageMap = new Map(
+    deviceUsage.map((item) => [String(item._id), item.totalUsed || 0])
+  );
+
+  return profiles.map((profile) => {
+    const profileId = String(profile._id || profile.id);
+    const ledgerUsed = Number(usageMap.get(profileId) || 0);
+    const enrolledDevices = Number(deviceUsageMap.get(profileId) || 0);
+
+    return {
+      ...profile,
+      used: Math.max(ledgerUsed, enrolledDevices),
+    };
+  });
 };
 
 // ══════════════════════════════════════════════════════════
@@ -198,7 +245,7 @@ const getAllVendors = async (req, res) => {
       .skip((page - 1) * limit)
       .limit(Number(limit));
 
-    const mappedVendors = vendors.map(v => v.toPublicProfile());
+    const mappedVendors = await attachKeyUsage(vendors.map(v => v.toPublicProfile()));
 
     res.json({
       success:     true,
@@ -232,7 +279,8 @@ const getVendor = async (req, res) => {
       .select('-password -activeToken -otp -otpExpiry')
       .populate('parentId', 'name email role company');
     if (!vendor) return res.status(404).json({ success: false, message: 'Vendor not found' });
-    res.json({ success: true, vendor: vendor.toPublicProfile() });
+    const [mappedVendor] = await attachKeyUsage([vendor.toPublicProfile()]);
+    res.json({ success: true, vendor: mappedVendor });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

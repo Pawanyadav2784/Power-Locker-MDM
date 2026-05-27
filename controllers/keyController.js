@@ -36,8 +36,10 @@ const CAN_SEND_TO = {
 // Universal key — koi type nahi, sabka ek hi balance
 // 'running_key' = universal key balance field
 const FIELD_MAP = {
+  new_key:     'runningKeyBalance',   // alias — same field
   android:     'runningKeyBalance',   // alias — same field
   running_key: 'runningKeyBalance',   // primary
+  iphone_key:  'runningKeyBalance',   // alias — same field
   iphone:      'runningKeyBalance',   // alias — same field
 };
 

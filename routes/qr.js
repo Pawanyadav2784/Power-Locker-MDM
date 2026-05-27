@@ -79,11 +79,11 @@ const uploadFields = upload.fields([
 
 // ── Key type → balance field map ─────────────────────────────
 const BALANCE_FIELD = {
-  new_key:     'androidBalance',
+  new_key:     'runningKeyBalance',
   running_key: 'runningKeyBalance',
-  iphone_key:  'iphoneBalance',
-  android:     'androidBalance',
-  iphone:      'iphoneBalance',
+  iphone_key:  'runningKeyBalance',
+  android:     'runningKeyBalance',
+  iphone:      'runningKeyBalance',
 };
 
 // POST /api/qr/generate — Customer enroll + QR generate

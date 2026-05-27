@@ -10,7 +10,7 @@ const { modifyBalance } = require('./keyController');
 const generateQR = async (req, res) => {
   try {
     const { keyType = 'running_key' } = req.body;
-    const balanceField = { android: 'androidBalance', running_key: 'runningKeyBalance', iphone: 'iphoneBalance' }[keyType];
+    const balanceField = 'runningKeyBalance';
     const retailer = await User.findById(req.user._id);
 
     if (retailer[balanceField] < 1)

@@ -565,7 +565,7 @@ const getCustomerStats = async (req, res) => {
 //  POST /api/customers/:id/change-status
 //  Body: { status: 'active' | 'removed' }
 //
-//  'removed' → UNENROLL_DEVICE       (FRP/DO policies clear, phone free)
+//  'removed' → running_key: DEACTIVE_RESTRICTION, new_key/android/iphone: RELEASE_DEVICE
 //  'active'  → ACTIVE_RESTRICTION    (MDM fully active, sab commands kaam karte hain)
 // ══════════════════════════════════════════════════════════
 const changeKeyStatus = async (req, res) => {
@@ -602,29 +602,50 @@ const changeKeyStatus = async (req, res) => {
 
     if (device) {
       if (isRemove) {
-        // Key Remove → FRP/Device Owner/restrictions clear, phone FREE
-        device.status   = 'removed';
+        const keyType = String(device.keyType || customer.keyType || '').toLowerCase();
+        const isRunningKey = keyType === 'running_key';
+        const removeCommand = isRunningKey ? 'DEACTIVE_RESTRICTION' : 'RELEASE_DEVICE';
+
+        // Running key remove reversible hai; new key remove final release hai.
+        device.status   = isRunningKey ? 'removed' : 'released';
         device.isLocked = false;
         device.mdmActive = false;
-        device.isEnrolled = false;
+        device.isEnrolled = isRunningKey;
         device.lockMessage = '';
         device.lockPhone = '';
+        if (!isRunningKey) {
+          device.releasedAt = new Date();
+          device.releaseNote = `Key removed — released by ${req.user.name || req.user.role}`;
+        }
         await device.save();
 
         await dispatchMDM(
           device,
-          'UNENROLL_DEVICE',
-          { reason: 'key_removed', uninstall: 'false' },
-          'Key Removed — Device Released',
+          removeCommand,
+          {
+            reason: 'key_removed',
+            mode: isRunningKey ? 'reversible' : 'final_release',
+            keyType,
+            ...(isRunningKey ? {} : { note: device.releaseNote }),
+          },
+          isRunningKey ? 'Running Key Removed — Reversible Free Mode' : 'New Key Removed — Device Released',
           req.user._id
         );
-        commandSent = 'UNENROLL_DEVICE';
+        commandSent = removeCommand;
         mdmSent     = true;
 
       } else {
+        if (device.status === 'released') {
+          return res.status(400).json({
+            success: false,
+            message: 'New key device already released hai. Active karne ke liye device ko dobara QR/provisioning se enroll karna hoga.',
+          });
+        }
+
         // Key Active → MDM wapas fully active ho jaye
         device.status    = 'active';
         device.mdmActive = true;
+        device.isEnrolled = true;
         await device.save();
 
         await dispatchMDM(

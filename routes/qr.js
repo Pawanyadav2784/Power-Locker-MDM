@@ -58,6 +58,19 @@ function buildProvisioningPayload({ deviceId, baseUrl, apkUrl, apkChecksum }) {
   return JSON.stringify(payload);
 }
 
+async function getStrictNewKeyProvisioning(apkUrl) {
+  if (!/^https:\/\//i.test(apkUrl || '')) {
+    throw new Error('New key provisioning ke liye APK_DOWNLOAD_URL HTTPS hona chahiye.');
+  }
+
+  const apkChecksum = await resolveApkProvisioningChecksum(apkUrl);
+  if (!apkChecksum) {
+    throw new Error('New key provisioning checksum missing hai. APK_PROVISIONING_CHECKSUM set karo ya APK URL reachable rakho.');
+  }
+
+  return apkChecksum;
+}
+
 // ── Multer config for customer images & signatures ──────────
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -129,6 +142,9 @@ router.post('/generate', protect, uploadFields, async (req, res) => {
     const BASE_URL = req.protocol + '://' + req.get('host');
     // ✅ APK URL — env var se lo, fallback v3.0
     const APK_URL = process.env.APK_DOWNLOAD_URL || DEFAULT_APK_URL;
+    const newKeyApkChecksum = keyType === 'new_key'
+      ? await getStrictNewKeyProvisioning(APK_URL)
+      : '';
     const files = req.files || {};
     const photoUrl     = files.customerImage?.[0]
       ? `/uploads/customers/${files.customerImage[0].filename}` : '';
@@ -198,15 +214,11 @@ router.post('/generate', protect, uploadFields, async (req, res) => {
     let qrPayload, downloadUrl, provisioningWarning;
     if (keyType === 'new_key') {
       downloadUrl = BASE_URL + '/download?deviceId=' + device.deviceId + '&type=new_key';
-      const apkChecksum = await resolveApkProvisioningChecksum(APK_URL);
-      if (!apkChecksum) {
-        provisioningWarning = 'APK provisioning checksum missing. Set APK_PROVISIONING_CHECKSUM for strict Android setup wizard support.';
-      }
       qrPayload = buildProvisioningPayload({
         deviceId: device.deviceId,
         baseUrl: BASE_URL,
         apkUrl: APK_URL,
-        apkChecksum,
+        apkChecksum: newKeyApkChecksum,
       });
     } else {
       // running_key / iphone_key - browser URL -> download page -> APK
@@ -252,10 +264,7 @@ router.get('/get-qr/:deviceId', protect, async (req, res) => {
     let qrPayload = downloadUrl;
     let provisioningWarning;
     if (device.keyType === 'new_key') {
-      const apkChecksum = await resolveApkProvisioningChecksum(APK_URL);
-      if (!apkChecksum) {
-        provisioningWarning = 'APK provisioning checksum missing. Set APK_PROVISIONING_CHECKSUM for strict Android setup wizard support.';
-      }
+      const apkChecksum = await getStrictNewKeyProvisioning(APK_URL);
       qrPayload = buildProvisioningPayload({
         deviceId: device.deviceId,
         baseUrl: BASE_URL,
@@ -264,7 +273,7 @@ router.get('/get-qr/:deviceId', protect, async (req, res) => {
       });
     }
     const qrImage = await QRCode.toDataURL(qrPayload, {
-      errorCorrectionLevel: 'M', width: 400,
+      errorCorrectionLevel: device.keyType === 'new_key' ? 'L' : 'M', width: 400,
     });
 
     res.json({ success: true, deviceId: device.deviceId, qrImage, downloadUrl, apkUrl: APK_URL, provisioningWarning });

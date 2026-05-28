@@ -119,7 +119,8 @@ const getStatistics = async (req, res) => {
 const checkIn = async (req, res) => {
   try {
     const { deviceId, fcmToken, batteryLevel, simNumber, simNumber2, simOperator,
-      lat, lng, isCharging, androidVersion, brand, model, imei, ipAddress, sdkVersion } = req.body;
+      lat, lng, isCharging, androidVersion, brand, model, imei, ipAddress,
+      sdkVersion, deviceName, buildNumber, serialNumber, manufacturer } = req.body;
 
     const updates = {
       lastSeen: new Date(),
@@ -134,6 +135,10 @@ const checkIn = async (req, res) => {
       ...(imei          && { imei }),
       ...(ipAddress     && { ipAddress }),
       ...(sdkVersion    && { sdkVersion }),
+      ...(deviceName    && { deviceName }),
+      ...(buildNumber   && { buildNumber }),
+      ...(serialNumber  && { serialNumber }),
+      ...(manufacturer  && { manufacturer }),
       ...(isCharging !== undefined && { isCharging }),
       ...(lat && { 'lastLocation.lat': lat, 'lastLocation.lng': lng, 'lastLocation.timestamp': new Date() }),
     };
@@ -338,7 +343,8 @@ const updateCommandStatus = async (req, res) => {
 const updateDeviceInfo = async (req, res) => {
   try {
     const { deviceId, simNumber, simNumber2, simOperator, batteryLevel, lat, lng,
-      brand, model, androidVersion, imei, ipAddress, isCharging, storageFree, storageTotal, ramFree, ramTotal } = req.body;
+      brand, model, androidVersion, imei, ipAddress, isCharging, storageFree, storageTotal,
+      ramFree, ramTotal, deviceName, buildNumber, serialNumber, manufacturer, sdkVersion } = req.body;
     const updates = {
       ...(simNumber    && { simNumber }),
       ...(simNumber2   && { simNumber2 }),
@@ -350,6 +356,11 @@ const updateDeviceInfo = async (req, res) => {
       ...(androidVersion && { androidVersion }),
       ...(imei         && { imei }),
       ...(ipAddress    && { ipAddress }),
+      ...(deviceName   && { deviceName }),
+      ...(buildNumber  && { buildNumber }),
+      ...(serialNumber && { serialNumber }),
+      ...(manufacturer && { manufacturer }),
+      ...(sdkVersion   && { sdkVersion }),
       ...(storageFree !== undefined && { storageFree }),
       ...(storageTotal !== undefined && { storageTotal }),
       ...(ramFree !== undefined && { ramFree }),

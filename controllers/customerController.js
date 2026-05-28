@@ -127,7 +127,7 @@ const getAllCustomers = async (req, res) => {
 
     const total     = await Customer.countDocuments(query);
     const customers = await Customer.find(query)
-      .populate('deviceId',   'deviceId status isLocked fcmToken lastSeen batteryLevel brand model')
+      .populate('deviceId',   'deviceId status isLocked fcmToken lastSeen batteryLevel brand model deviceName androidVersion buildNumber imei imei2 serialNumber manufacturer sdkVersion lastLocation')
       .populate('retailerId', 'name phone company')
       .sort({ createdAt: -1 })
       .skip((Number(page) - 1) * Number(limit))

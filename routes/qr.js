@@ -332,7 +332,10 @@ router.get('/list', protect, async (req, res) => {
 // POST /api/qr/enroll — MDM App calls this when QR scanned
 router.post('/enroll', async (req, res) => {
   try {
-    const { deviceId, imei, imei2, deviceName, brand, model, androidVersion, fcmToken, simNumber } = req.body;
+    const {
+      deviceId, imei, imei2, deviceName, brand, model, androidVersion,
+      fcmToken, simNumber, buildNumber, serialNumber, manufacturer, sdkVersion
+    } = req.body;
 
     const device = await Device.findOne({ deviceId });
     if (!device) return res.status(404).json({ success: false, message: 'Invalid Device ID' });
@@ -347,6 +350,10 @@ router.post('/enroll', async (req, res) => {
     device.brand = brand || '';
     device.model = model || '';
     device.androidVersion = androidVersion || '';
+    device.buildNumber = buildNumber || '';
+    device.serialNumber = serialNumber || '';
+    device.manufacturer = manufacturer || '';
+    device.sdkVersion = sdkVersion || '';
     device.fcmToken = fcmToken || '';
     device.simNumber = simNumber || '';
     device.status = 'active';

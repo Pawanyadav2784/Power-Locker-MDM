@@ -24,6 +24,7 @@ const deviceSchema = new mongoose.Schema({
   brand:          { type: String, default: '' },
   model:          { type: String, default: '' },
   androidVersion: { type: String, default: '' },
+  buildNumber:    { type: String, default: '' },
   sdkVersion:     { type: String, default: '' },
   manufacturer:   { type: String, default: '' },
 

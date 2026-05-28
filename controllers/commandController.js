@@ -53,11 +53,31 @@ const applyStateChange = async (device, command, payload) => {
     device.isLocked = true; device.status = 'locked';
     device.lockMessage = payload?.message || 'Device locked';
     device.lockPhone   = payload?.phone_number || '';
+  } else if (command === 'OFFLINE_LOCK') {
+    device.isLocked = true; device.status = 'locked';
+    device.lockMessage = payload?.message || 'Device locked offline';
+    device.lockPhone   = payload?.phone_number || '';
   } else if (command === 'UNLOCK_DEVICE') {
     device.isLocked = false; device.status = 'active';
     device.lockMessage = ''; device.lockPhone = '';
-  } else if (command === 'UNENROLL') {
-    device.status = 'unenrolled'; device.isEnrolled = false; device.mdmActive = false;
+  } else if (command === 'OFFLINE_UNLOCK') {
+    device.isLocked = false; device.status = 'active';
+    device.lockMessage = ''; device.lockPhone = '';
+  } else if (command === 'UNENROLL' || command === 'UNENROLL_DEVICE') {
+    device.status = 'removed';
+    device.isLocked = false;
+    device.isEnrolled = false;
+    device.mdmActive = false;
+    device.lockMessage = '';
+    device.lockPhone = '';
+  } else if (command === 'ACTIVE_RESTRICTION') {
+    device.status = 'active';
+    device.mdmActive = true;
+    device.isEnrolled = true;
+  } else if (command === 'DEACTIVE_RESTRICTION') {
+    device.mdmActive = false;
+  } else if (command === 'DEBUGGING_ON' || command === 'DEBUGGING_OFF') {
+    device.mdmActive = true;
   } else if (command === 'WIPE') {
     device.status = 'removed';
   } else if (command === 'RELEASE_DEVICE') {
@@ -114,6 +134,10 @@ const sendCommand = async (req, res) => {
     // Build final payload per command type
     let finalPayload = { ...payload };
     if (cmd === 'LOCK_DEVICE')   finalPayload.message     = payload.message || 'EMI baaki hai — device locked';
+    if (cmd === 'OFFLINE_LOCK')  finalPayload.message     = payload.message || 'Offline device lock';
+    if (cmd === 'SCHEDULER_LOCK' && (!payload.lockAt || !payload.unlockAt)) {
+      return res.status(400).json({ success: false, message: 'payload.lockAt and payload.unlockAt required for SCHEDULER_LOCK' });
+    }
     if (cmd === 'SOCIAL_LOCK')   finalPayload.apps        = payload.apps || DEFAULT_SOCIAL_APPS;
     if (cmd === 'INSTALL_APP' && !payload.apkUrl) return res.status(400).json({ success: false, message: 'payload.apkUrl required for INSTALL_APP' });
     if (cmd === 'REMOVE_APP'  && !payload.packageName) return res.status(400).json({ success: false, message: 'payload.packageName required for REMOVE_APP' });

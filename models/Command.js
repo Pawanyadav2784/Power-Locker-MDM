@@ -7,7 +7,7 @@ const commandSchema = new mongoose.Schema({
     type: String,
     enum: [
       // Lock / Unlock
-      'LOCK_DEVICE', 'UNLOCK_DEVICE',
+      'LOCK_DEVICE', 'UNLOCK_DEVICE', 'OFFLINE_LOCK', 'OFFLINE_UNLOCK', 'SCHEDULER_LOCK',
       // Reset
       'REBOOT', 'SOFT_RESET', 'HARD_RESET', 'WIPE',
       // Device Info
@@ -17,7 +17,7 @@ const commandSchema = new mongoose.Schema({
       // App Management
       'INSTALL_APP', 'REMOVE_APP', 'UPDATE_APP', 'MDM_APP_UPDATE',
       // Enrollment
-      'UNENROLL', 'ENROLL', 'UNENROLL_DEVICE',
+      'UNENROLL', 'ENROLL', 'UNENROLL_DEVICE', 'RELEASE_DEVICE',
       // Restrictions
       'ACTIVE_RESTRICTION', 'DEACTIVE_RESTRICTION',
       'DEBUGGING_ON', 'DEBUGGING_OFF',

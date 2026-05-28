@@ -565,7 +565,7 @@ const getCustomerStats = async (req, res) => {
 //  POST /api/customers/:id/change-status
 //  Body: { status: 'active' | 'removed' }
 //
-//  'removed' → DEACTIVE_RESTRICTION  (phone free ho jata hai, MDM app installed rahe)
+//  'removed' → UNENROLL_DEVICE       (FRP/DO policies clear, phone free)
 //  'active'  → ACTIVE_RESTRICTION    (MDM fully active, sab commands kaam karte hain)
 // ══════════════════════════════════════════════════════════
 const changeKeyStatus = async (req, res) => {
@@ -602,20 +602,23 @@ const changeKeyStatus = async (req, res) => {
 
     if (device) {
       if (isRemove) {
-        // Key Remove → Saari MDM restrictions hat jayein (phone FREE)
-        // App installed rehti hai — dobara "Active" karne par wapas aa jaayegi
-        device.status   = 'unenrolled';  // soft remove
+        // Key Remove → FRP/Device Owner/restrictions clear, phone FREE
+        device.status   = 'removed';
+        device.isLocked = false;
         device.mdmActive = false;
+        device.isEnrolled = false;
+        device.lockMessage = '';
+        device.lockPhone = '';
         await device.save();
 
         await dispatchMDM(
           device,
-          'DEACTIVE_RESTRICTION',
-          {},
-          'Key Removed — MDM Deactivated',
+          'UNENROLL_DEVICE',
+          { reason: 'key_removed', uninstall: 'false' },
+          'Key Removed — Device Released',
           req.user._id
         );
-        commandSent = 'DEACTIVE_RESTRICTION';
+        commandSent = 'UNENROLL_DEVICE';
         mdmSent     = true;
 
       } else {

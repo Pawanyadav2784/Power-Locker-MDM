@@ -77,7 +77,7 @@ const customerSchema = new mongoose.Schema({
   // ── Status ────────────────────────────────────────────────
   status: {
     type: String,
-    enum: ['pending', 'active', 'locked', 'completed', 'defaulted', 'closed'],
+    enum: ['pending', 'active', 'locked', 'completed', 'defaulted', 'closed', 'removed'],
     default: 'pending',
   },
 

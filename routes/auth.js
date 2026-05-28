@@ -15,6 +15,7 @@ const {
   getProfile,
   updateProfile,
   changePasswordSelf,
+  changeAdminCredentials,
   changePasswordAdmin,
   toggleActive,
   logout,
@@ -41,6 +42,7 @@ router.put('/update',  protect, updateProfile);    // PUT { name, phone, city, .
 // PUT /api/auth/set-password
 // Body: { newPassword, confirmPassword }
 router.put('/set-password', protect, changePasswordSelf);
+router.put('/admin-credentials', protect, adminOnly, changeAdminCredentials);
 
 router.get('/logout', protect, logout);            // GET — session clear
 

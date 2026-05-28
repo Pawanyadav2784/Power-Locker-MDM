@@ -125,6 +125,88 @@ const changePasswordSelf = async (req, res) => {
   }
 };
 
+// @desc    Change logged-in super admin email/password from Postman
+// @route   PUT /api/auth/admin-credentials
+// @access  Super Admin only
+// Body: { currentPassword, email?, newEmail?, newPassword?, confirmPassword? }
+const changeAdminCredentials = async (req, res) => {
+  try {
+    const { currentPassword, email, newEmail, newPassword, confirmPassword } = req.body;
+    const nextEmail = String(newEmail || email || '').trim().toLowerCase();
+
+    if (!currentPassword) {
+      return res.status(400).json({ success: false, message: 'currentPassword required hai' });
+    }
+
+    if (!nextEmail && !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'email ya newPassword me se kam se kam ek field bhejo',
+      });
+    }
+
+    const user = await User.findById(req.user._id).select('+password +activeToken');
+    if (!user) return res.status(404).json({ success: false, message: 'Admin user not found' });
+
+    if (user.role !== 'super_admin') {
+      return res.status(403).json({ success: false, message: 'Super Admin access required.' });
+    }
+
+    const passwordOk = await user.matchPassword(currentPassword);
+    if (!passwordOk) {
+      return res.status(401).json({ success: false, message: 'Current password galat hai' });
+    }
+
+    if (nextEmail && nextEmail !== user.email) {
+      const emailExists = await User.findOne({
+        email: nextEmail,
+        _id: { $ne: user._id },
+      });
+
+      if (emailExists) {
+        return res.status(409).json({
+          success: false,
+          message: 'Ye email kisi aur user me already use ho raha hai',
+        });
+      }
+
+      user.email = nextEmail;
+    }
+
+    if (newPassword) {
+      if (!confirmPassword) {
+        return res.status(400).json({ success: false, message: 'confirmPassword required hai' });
+      }
+
+      if (newPassword !== confirmPassword) {
+        return res.status(400).json({
+          success: false,
+          message: 'newPassword aur confirmPassword match nahi kar rahe',
+        });
+      }
+
+      if (newPassword.length < 6) {
+        return res.status(400).json({
+          success: false,
+          message: 'Password kam se kam 6 characters ka hona chahiye',
+        });
+      }
+
+      user.password = newPassword;
+    }
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: 'Admin login credentials update ho gaye',
+      user: user.toPublicProfile(),
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 // @desc    Toggle user active/inactive (Admin)
 // @route   PUT /api/auth/active-deactive/:id
 const toggleActive = async (req, res) => {
@@ -164,6 +246,7 @@ module.exports = {
   getProfile,
   updateProfile,
   changePasswordSelf,      // ✅ Panel ke andar — new + confirm (old ki zaroorat nahi)
+  changeAdminCredentials,
   changePasswordAdmin,     // ✅ Admin kisi bhi user ka password change kare
   toggleActive,
   logout,

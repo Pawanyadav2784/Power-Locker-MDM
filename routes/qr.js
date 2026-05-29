@@ -11,8 +11,21 @@ const { protect } = require('../middleware/auth');
 
 const MDM_PACKAGE_NAME = 'com.runningkey.mdm';
 const MDM_ADMIN_COMPONENT = `${MDM_PACKAGE_NAME}/${MDM_PACKAGE_NAME}.receivers.AdminReceiver`;
-const DEFAULT_APK_URL = 'https://raw.githubusercontent.com/Pawanyadav2784/mdmlocker/main/PowerLocker-v3.0.apk';
+const DEFAULT_APK_URL = 'https://raw.githubusercontent.com/Pawanyadav2784/mdmlocker/main/PowerLocker-v26.0.apk';
 let apkChecksumCache = { url: null, checksum: null };
+
+function getPublicOrigin(req) {
+  const configuredBase = (process.env.PUBLIC_BASE_URL || process.env.BASE_URL || '').trim();
+  if (configuredBase) {
+    return configuredBase.replace(/\/api\/?$/i, '').replace(/\/$/, '');
+  }
+
+  const forwardedProto = (req.get('x-forwarded-proto') || '').split(',')[0].trim();
+  const forwardedHost = (req.get('x-forwarded-host') || '').split(',')[0].trim();
+  const proto = forwardedProto || req.protocol || 'https';
+  const host = forwardedHost || req.get('host');
+  return `${proto}://${host}`;
+}
 
 function toBase64Url(buffer) {
   return buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
@@ -138,9 +151,9 @@ router.post('/generate', protect, uploadFields, async (req, res) => {
       });
     }
 
-    // ✅ ALWAYS use request host — no env var (avoids localhost bug on Render)
-    const BASE_URL = req.protocol + '://' + req.get('host');
-    // ✅ APK URL — env var se lo, fallback v3.0
+    // ✅ Public origin se URL banao, Render proxy ke peeche bhi HTTPS rahe.
+    const BASE_URL = getPublicOrigin(req);
+    // ✅ APK URL — env var se lo, fallback latest release
     const APK_URL = process.env.APK_DOWNLOAD_URL || DEFAULT_APK_URL;
     const newKeyApkChecksum = keyType === 'new_key'
       ? await getStrictNewKeyProvisioning(APK_URL)
@@ -257,8 +270,8 @@ router.get('/get-qr/:deviceId', protect, async (req, res) => {
     const device = await Device.findOne({ deviceId: req.params.deviceId });
     if (!device) return res.status(404).json({ success: false, message: 'Device not found' });
 
-    // ✅ ALWAYS use request host
-    const BASE_URL = req.protocol + '://' + req.get('host');
+    // ✅ Public origin se URL banao, Render proxy ke peeche bhi HTTPS rahe.
+    const BASE_URL = getPublicOrigin(req);
     const APK_URL = process.env.APK_DOWNLOAD_URL || DEFAULT_APK_URL;
     const downloadUrl = BASE_URL + '/download?deviceId=' + device.deviceId + '&type=' + device.keyType;
     let qrPayload = downloadUrl;

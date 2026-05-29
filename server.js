@@ -25,6 +25,7 @@ const scheduledCmdRoutes    = require('./routes/scheduledCommands');
 const downloadPageRoutes    = require('./routes/downloadPage'); // ✅ APK download page
 
 const app = express();
+app.set('trust proxy', 1);
 
 // ─── DB Connection ────────────────────────────────────────
 connectDB();

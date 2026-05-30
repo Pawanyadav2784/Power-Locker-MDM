@@ -131,6 +131,17 @@ const sendCommand = async (req, res) => {
       });
     }
 
+    // Running-key Remove ke baad device free mode mein rahega.
+    // Sirf ACTIVE_RESTRICTION allow hai taaki admin dubara protection activate kar sake.
+    if (device.status === 'removed' && cmd !== 'ACTIVE_RESTRICTION' && cmd !== 'RELEASE_DEVICE') {
+      return res.status(403).json({
+        success: false,
+        message: `Device ${device.deviceId} removed/free mode mein hai. Pehle Active Restriction bhejo, uske baad commands chalenge.`,
+        deviceId: device.deviceId,
+        status: 'removed',
+      });
+    }
+
     // Build final payload per command type
     let finalPayload = { ...payload };
     if (cmd === 'LOCK_DEVICE')   finalPayload.message     = payload.message || 'EMI baaki hai — device locked';
@@ -219,10 +230,14 @@ const pollCommands = async (req, res) => {
     const device = await Device.findOne({ deviceId: req.params.deviceId });
     if (!device) return res.status(404).json({ success: false, message: 'Device not found' });
 
-    const pending = await Command.find({
+    const commandQuery = {
       deviceId: device._id,
       status:   { $in: ['pending', 'sent'] },
-    }).sort({ priority: 1, createdAt: 1 });
+    };
+    if (device.status === 'removed') commandQuery.commandType = 'ACTIVE_RESTRICTION';
+    if (device.status === 'released') commandQuery.commandType = 'RELEASE_DEVICE';
+
+    const pending = await Command.find(commandQuery).sort({ priority: 1, createdAt: 1 });
 
     // Mark sent → delivered
     await Command.updateMany(

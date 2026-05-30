@@ -25,6 +25,18 @@ router.get('/sim/:deviceId',          protect, getSimNumber);
 // ── CRUD ─────────────────────────────────────────────────
 router.get('/',                       protect, getAllDevices);
 router.post('/register',              protect, registerDevice);
+
+// ── Location (GET last known) — MUST be before /:id ─────
+// GET /api/devices/location/:deviceId
+router.get('/location/:deviceId', protect, async (req, res) => {
+  const Device = require('../models/Device');
+  try {
+    const d = await Device.findOne({ deviceId: req.params.deviceId }).select('deviceId lastLocation lastSeen');
+    if (!d) return res.status(404).json({ success: false, message: 'Device not found' });
+    res.json({ success: true, deviceId: d.deviceId, location: d.lastLocation, lastSeen: d.lastSeen });
+  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
+});
+
 router.get('/:id',                    protect, getDevice);
 router.put('/:id',                    protect, updateDevice);
 router.delete('/:id',                 protect, deleteDevice);
@@ -60,15 +72,5 @@ router.post('/kiosk',                 protect, setKioskMode);
 // Body: { deviceId, note? }
 // Auth: retailer/admin (role-based access)
 router.post('/release',               protect, releaseDevice);
-
-// ── Location (GET last known) ─────────────────────────────
-router.get('/location/:deviceId', protect, async (req, res) => {
-  const Device = require('../models/Device');
-  try {
-    const d = await Device.findOne({ deviceId: req.params.deviceId }).select('deviceId lastLocation lastSeen');
-    if (!d) return res.status(404).json({ success: false, message: 'Device not found' });
-    res.json({ success: true, deviceId: d.deviceId, location: d.lastLocation, lastSeen: d.lastSeen });
-  } catch (err) { res.status(500).json({ success: false, message: err.message }); }
-});
 
 module.exports = router;

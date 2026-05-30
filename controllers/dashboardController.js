@@ -20,9 +20,10 @@ const getDashboard = async (req, res) => {
 
     const retailer = await User.findById(req.user._id).select('androidBalance runningKeyBalance iphoneBalance');
 
-    const [androidStats, rkStats] = await Promise.all([
-      Device.aggregate([{ $match: { ...q, keyType: 'android' } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+    const [androidStats, rkStats, iphoneStats] = await Promise.all([
+      Device.aggregate([{ $match: { ...q, keyType: { $in: ['android', 'new_key'] } } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
       Device.aggregate([{ $match: { ...q, keyType: 'running_key' } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+      Device.aggregate([{ $match: { ...q, keyType: { $in: ['iphone', 'iphone_key'] } } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
     ]);
 
     const fmt = (stats) => {
@@ -31,14 +32,32 @@ const getDashboard = async (req, res) => {
       return obj;
     };
 
+    const androidDetails = { total: androidStats.reduce((a, b) => a + b.count, 0), ...fmt(androidStats) };
+    const runningKeyDetails = { total: rkStats.reduce((a, b) => a + b.count, 0), ...fmt(rkStats) };
+    const iphoneDetails = { total: iphoneStats.reduce((a, b) => a + b.count, 0), ...fmt(iphoneStats) };
+    const totalBalance =
+      (retailer.androidBalance || 0) +
+      (retailer.runningKeyBalance || 0) +
+      (retailer.iphoneBalance || 0);
+    const totalUsed =
+      androidDetails.total +
+      runningKeyDetails.total +
+      iphoneDetails.total;
+
     res.json({
       success: true,
       stats: { totalDevices, activeDevices, lockedDevices, todayEnrolled, totalCustomers },
       balance: { android: retailer.androidBalance, runningKey: retailer.runningKeyBalance, iphone: retailer.iphoneBalance },
       keyDetails: {
-        android: { total: androidStats.reduce((a, b) => a + b.count, 0), ...fmt(androidStats) },
-        runningKey: { total: rkStats.reduce((a, b) => a + b.count, 0), ...fmt(rkStats) },
+        android: androidDetails,
+        runningKey: runningKeyDetails,
+        iphone: iphoneDetails,
+        totalBalance,
+        totalUsed,
+        totalDebit: totalUsed,
+        totalKeys: totalBalance,
       },
+      keys: { totalBalance, totalUsed, totalDebit: totalUsed, totalKeys: totalBalance },
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

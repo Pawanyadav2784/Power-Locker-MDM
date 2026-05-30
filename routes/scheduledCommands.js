@@ -2,7 +2,9 @@ const express = require('express');
 const router = express.Router();
 const ScheduledCommand = require('../models/ScheduledCommand');
 const Device = require('../models/Device');
+const Command = require('../models/Command');
 const { protect } = require('../middleware/auth');
+const { sendFCM } = require('../utils/fcmHelper');
 
 // POST /api/scheduled-commands/
 router.post('/', protect, async (req, res) => {
@@ -26,7 +28,58 @@ router.post('/', protect, async (req, res) => {
       createdBy: req.user._id,
     });
 
-    res.status(201).json({ success: true, message: 'Command scheduled', command: cmd });
+    const localSchedulePayload = {
+      ...(payload || {}),
+      scheduleId: String(cmd._id),
+      scheduleCommandType: command_type,
+      scheduledAt: cmd.scheduledAt.toISOString(),
+      label: label || '',
+    };
+
+    const setupCommand = await Command.create({
+      deviceId: device._id,
+      commandType: 'SCHEDULER_LOCK',
+      payload: localSchedulePayload,
+      label: label || `Schedule ${command_type}`,
+      deliveryMethod: device.fcmToken ? 'fcm' : 'poll',
+      status: device.fcmToken ? 'sent' : 'pending',
+      sentAt: device.fcmToken ? new Date() : undefined,
+      createdBy: req.user._id,
+    });
+
+    let setupDelivery = { success: false, via: 'poll' };
+    if (device.fcmToken) {
+      setupDelivery = await sendFCM(
+        device.fcmToken,
+        'Schedule Command',
+        label || command_type,
+        {
+          command: 'SCHEDULER_LOCK',
+          commandType: 'SCHEDULER_LOCK',
+          deviceId: device.deviceId,
+          ...localSchedulePayload,
+        }
+      );
+
+      if (!setupDelivery.success) {
+        setupCommand.deliveryMethod = 'poll';
+        setupCommand.status = 'pending';
+        setupCommand.errorMessage = setupDelivery.error || 'FCM delivery failed';
+        await setupCommand.save();
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Command scheduled',
+      command: cmd,
+      localSetup: {
+        commandId: setupCommand._id,
+        deliveryMethod: setupCommand.deliveryMethod,
+        status: setupCommand.status,
+        fcm: setupDelivery,
+      },
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

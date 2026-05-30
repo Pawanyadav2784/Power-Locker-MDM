@@ -646,7 +646,16 @@ const changeKeyStatus = async (req, res) => {
         device.status    = 'active';
         device.mdmActive = true;
         device.isEnrolled = true;
+        device.lockMessage = '';
+        device.lockPhone = '';
         await device.save();
+
+        // Customer status bhi sync karo
+        customer.status = 'active';
+        customer.isDeviceLocked = false;
+        customer.lockReason = '';
+        customer.lastUnlockedAt = new Date();
+        await customer.save();
 
         await dispatchMDM(
           device,

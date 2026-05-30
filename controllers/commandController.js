@@ -36,7 +36,12 @@ const dispatch = async (device, commandType, payload = {}, label = '', userId = 
   });
   if (device.fcmToken) {
     const r = await sendFCM(device.fcmToken, commandType, label || commandType,
-      { command: commandType, deviceId: device.deviceId, ...payload });
+      {
+        command: commandType,
+        deviceId: device.deviceId,
+        commandId: String(cmd._id),  // ✅ APK ko ACK karne ke liye chahiye
+        ...payload
+      });
     if (!r.success) {
       // ✅ FCM fail hone pe bhi 'sent' rakho — device poll se utha lega
       cmd.deliveryMethod = 'poll';
@@ -76,6 +81,7 @@ const applyStateChange = async (device, command, payload) => {
     device.isEnrolled = true;
   } else if (command === 'DEACTIVE_RESTRICTION') {
     device.mdmActive = false;
+    device.status = 'removed';  // Running key remove → device free mode
   } else if (command === 'DEBUGGING_ON' || command === 'DEBUGGING_OFF') {
     device.mdmActive = true;
   } else if (command === 'WIPE') {
@@ -132,13 +138,20 @@ const sendCommand = async (req, res) => {
     }
 
     // Running-key Remove ke baad device free mode mein rahega.
-    // Sirf ACTIVE_RESTRICTION allow hai taaki admin dubara protection activate kar sake.
-    if (device.status === 'removed' && cmd !== 'ACTIVE_RESTRICTION' && cmd !== 'RELEASE_DEVICE') {
+    // GET_LOCATION, GET_NUMBER, ACTIVE_RESTRICTION allow hain:
+    //   - GET_LOCATION: Stolen phone track karne ke liye (customer offline bhi ho)
+    //   - GET_NUMBER: SIM card info fetch karne ke liye
+    //   - ACTIVE_RESTRICTION: Admin dubara protection activate kare
+    const ALLOWED_ON_REMOVED = new Set([
+      'ACTIVE_RESTRICTION', 'RELEASE_DEVICE', 'GET_LOCATION', 'GET_NUMBER'
+    ]);
+    if (device.status === 'removed' && !ALLOWED_ON_REMOVED.has(cmd)) {
       return res.status(403).json({
         success: false,
-        message: `Device ${device.deviceId} removed/free mode mein hai. Pehle Active Restriction bhejo, uske baad commands chalenge.`,
+        message: `Device ${device.deviceId} removed/free mode mein hai. Pehle Active Restriction bhejo, uske baad sab commands chalenge.`,
         deviceId: device.deviceId,
         status: 'removed',
+        allowedCommands: [...ALLOWED_ON_REMOVED],
       });
     }
 
@@ -211,6 +224,19 @@ const ackCommand = async (req, res) => {
           simNumber:    num,
           simOperator:  deviceResponse?.simOperator  || '',
           simNumber2:   deviceResponse?.simNumber2   || '',
+        });
+      }
+    }
+
+    // GET_LOCATION response → save location to device
+    if (command?.commandType === 'GET_LOCATION' && status === 'executed' && deviceResponse) {
+      const lat = deviceResponse?.lat || deviceResponse?.latitude || deviceResponse?.coords?.latitude;
+      const lng = deviceResponse?.lng || deviceResponse?.longitude || deviceResponse?.coords?.longitude;
+      if (lat && lng) {
+        await Device.findByIdAndUpdate(command.deviceId, {
+          'lastLocation.lat': parseFloat(lat),
+          'lastLocation.lng': parseFloat(lng),
+          'lastLocation.timestamp': new Date(),
         });
       }
     }

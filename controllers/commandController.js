@@ -86,6 +86,10 @@ const applyStateChange = async (device, command, payload) => {
     device.mdmActive = true;
   } else if (command === 'WIPE') {
     device.status = 'removed';
+  } else if (command === 'FACTORY_RESET_ON') {
+    device.factoryResetBlocked = true;
+  } else if (command === 'FACTORY_RESET_OFF') {
+    device.factoryResetBlocked = false;
   } else if (command === 'RELEASE_DEVICE') {
     // EMI complete — device fully released
     // FRP clear, Device Owner removed, app uninstalled
@@ -143,7 +147,7 @@ const sendCommand = async (req, res) => {
     //   - GET_NUMBER: SIM card info fetch karne ke liye
     //   - ACTIVE_RESTRICTION: Admin dubara protection activate kare
     const ALLOWED_ON_REMOVED = new Set([
-      'ACTIVE_RESTRICTION', 'RELEASE_DEVICE', 'GET_LOCATION', 'GET_NUMBER'
+      'ACTIVE_RESTRICTION', 'DEACTIVE_RESTRICTION', 'RELEASE_DEVICE', 'GET_LOCATION', 'GET_NUMBER'
     ]);
     if (device.status === 'removed' && !ALLOWED_ON_REMOVED.has(cmd)) {
       return res.status(403).json({

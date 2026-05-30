@@ -8,7 +8,7 @@ const generateToken = (userId) => {
   });
 };
 
-// ─── Protect: Verify token + single session check ────────
+// ─── Protect: Verify token ───────────────────────────────
 const protect = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -47,14 +47,6 @@ const protect = async (req, res, next) => {
         success: false,
         code: 'ACCOUNT_DEACTIVATED',
         message: 'Account is deactivated. Contact admin.',
-      });
-
-    // ── Single Session: reject old token if new login happened ──
-    if (user.activeToken && user.activeToken !== token)
-      return res.status(401).json({
-        success: false,
-        code: 'SESSION_EXPIRED',
-        message: 'Session expired. You have logged in from another device.',
       });
 
     req.user  = user;

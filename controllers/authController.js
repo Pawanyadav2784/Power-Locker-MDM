@@ -21,7 +21,7 @@ const login = async (req, res) => {
     if (!email || !password)
       return res.status(400).json({ success: false, message: 'Email and password required' });
 
-    const user = await User.findOne({ email }).select('+password +loginAttempts +lockUntil +activeToken');
+    const user = await User.findOne({ email }).select('+password +loginAttempts +lockUntil');
     if (!user)
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
 
@@ -57,7 +57,6 @@ const login = async (req, res) => {
     user.lastLoginAgent = req.headers['user-agent'] || '';
 
     const token = generateToken(user._id);
-    user.activeToken = token; // Single session: new login invalidates old token
     await user.save();
 
     const { panelType, redirectTo } = getRoleInfo(user.role);

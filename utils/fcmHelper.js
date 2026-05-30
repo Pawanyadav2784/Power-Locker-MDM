@@ -21,18 +21,14 @@ const sendFCM = async (fcmToken, title, body, data = {}) => {
     initFirebase();
     const message = {
       token: fcmToken,
-      notification: { title, body },
-      data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
+      data: Object.fromEntries(Object.entries({
+        title,
+        body,
+        ...data,
+      }).map(([k, v]) => [k, String(v)])),
       android: {
         priority: 'high',             // ✅ HIGH priority = doze mode mein bhi turant wake up
         ttl: 60 * 1000,              // 60 sec valid
-        notification: {
-          sound: 'default',
-          defaultSound: true,
-          notificationPriority: 'PRIORITY_MAX',
-          channelId: 'mdm_commands',
-          visibility: 'PUBLIC',
-        },
       },
     };
     const response = await admin.messaging().send(message);

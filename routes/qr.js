@@ -31,6 +31,10 @@ function toBase64Url(buffer) {
   return buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
+function resolveApkSignatureChecksum() {
+  return (process.env.APK_SIGNATURE_CHECKSUM || 'zlqoVvQ2rvBvhZrq0YVCYqb8pvSatXsviWxNz-Cei2w').trim();
+}
+
 async function resolveApkProvisioningChecksum(apkUrl) {
   const configuredChecksum = process.env.APK_PROVISIONING_CHECKSUM || process.env.APK_SHA256_CHECKSUM || '';
   if (configuredChecksum.trim()) return configuredChecksum.trim();
@@ -51,20 +55,31 @@ async function resolveApkProvisioningChecksum(apkUrl) {
 }
 
 function buildProvisioningPayload({ deviceId, baseUrl, apkUrl, apkChecksum }) {
+  const signatureChecksum = resolveApkSignatureChecksum();
+  const includePackageChecksum = String(process.env.PROVISIONING_INCLUDE_PACKAGE_CHECKSUM || '')
+    .toLowerCase() === 'true';
   const payload = {
     'android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME': MDM_ADMIN_COMPONENT,
     'android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_NAME': MDM_PACKAGE_NAME,
     'android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION': apkUrl,
+    'android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM': signatureChecksum,
     'android.app.extra.PROVISIONING_SKIP_ENCRYPTION': true,
     'android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED': true,
+    'android.app.extra.PROVISIONING_LOCALE': 'en_IN',
+    'android.app.extra.PROVISIONING_TIME_ZONE': 'Asia/Kolkata',
+    'android.app.extra.PROVISIONING_DOWNLOAD_TIMEOUT': 3600000,
+    'android.app.extra.PROVISIONING_SKIP_EDUCATION_SCREENS': true,
     'android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE': {
       deviceId,
       server: baseUrl,
       type: 'new_key',
+      auto_enroll: 'true',
+      max_retries: '10',
+      bg_download: 'true',
     },
   };
 
-  if (apkChecksum) {
+  if (includePackageChecksum && apkChecksum) {
     payload['android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_CHECKSUM'] = apkChecksum;
   }
 
@@ -75,6 +90,8 @@ async function getStrictNewKeyProvisioning(apkUrl) {
   if (!/^https:\/\//i.test(apkUrl || '')) {
     throw new Error('New key provisioning ke liye APK_DOWNLOAD_URL HTTPS hona chahiye.');
   }
+
+  if (resolveApkSignatureChecksum()) return '';
 
   const apkChecksum = await resolveApkProvisioningChecksum(apkUrl);
   if (!apkChecksum) {

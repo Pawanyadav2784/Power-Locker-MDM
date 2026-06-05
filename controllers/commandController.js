@@ -81,7 +81,14 @@ const applyStateChange = async (device, command, payload) => {
     device.isEnrolled = true;
   } else if (command === 'DEACTIVE_RESTRICTION') {
     device.mdmActive = false;
-    device.status = 'removed';  // Running key remove → device free mode
+    if (device.status !== 'locked') device.status = 'active';
+  } else if (command === 'RUNNING_KEY_REMOVE') {
+    device.status = 'removed';
+    device.isLocked = false;
+    device.mdmActive = false;
+    device.isEnrolled = true;
+    device.lockMessage = '';
+    device.lockPhone = '';
   } else if (command === 'DEBUGGING_ON' || command === 'DEBUGGING_OFF') {
     device.mdmActive = true;
   } else if (command === 'WIPE') {
@@ -147,7 +154,7 @@ const sendCommand = async (req, res) => {
     //   - GET_NUMBER: SIM card info fetch karne ke liye
     //   - ACTIVE_RESTRICTION: Admin dubara protection activate kare
     const ALLOWED_ON_REMOVED = new Set([
-      'ACTIVE_RESTRICTION', 'DEACTIVE_RESTRICTION', 'RELEASE_DEVICE', 'GET_LOCATION', 'GET_NUMBER'
+      'ACTIVE_RESTRICTION', 'RUNNING_KEY_REMOVE', 'RELEASE_DEVICE', 'GET_LOCATION', 'GET_NUMBER'
     ]);
     if (device.status === 'removed' && !ALLOWED_ON_REMOVED.has(cmd)) {
       return res.status(403).json({
@@ -264,14 +271,18 @@ const pollCommands = async (req, res) => {
       deviceId: device._id,
       status:   { $in: ['pending', 'sent'] },
     };
-    if (device.status === 'removed') commandQuery.commandType = 'ACTIVE_RESTRICTION';
+    if (device.status === 'removed') {
+      commandQuery.commandType = {
+        $in: ['ACTIVE_RESTRICTION', 'RUNNING_KEY_REMOVE', 'RELEASE_DEVICE', 'GET_LOCATION', 'GET_NUMBER'],
+      };
+    }
     if (device.status === 'released') commandQuery.commandType = 'RELEASE_DEVICE';
 
     const pending = await Command.find(commandQuery).sort({ priority: 1, createdAt: 1 });
 
     // Mark sent → delivered
     await Command.updateMany(
-      { deviceId: device._id, status: 'sent' },
+      { deviceId: device._id, status: 'sent', _id: { $in: pending.map(c => c._id) } },
       { status: 'delivered', deliveredAt: new Date() }
     );
 

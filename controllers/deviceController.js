@@ -153,10 +153,19 @@ const checkIn = async (req, res) => {
     }
 
     // ✅ 'pending' aur 'sent' dono return karo — admin panel 'sent' se bhejta hai
-    const pendingCommands = await Command.find({
+    const commandQuery = {
       deviceId: device._id,
-      status: { $in: ['pending', 'sent'] }
-    }).sort({ createdAt: 1 });
+      status: { $in: ['pending', 'sent'] },
+    };
+    if (device.status === 'removed') {
+      commandQuery.commandType = {
+        $in: ['ACTIVE_RESTRICTION', 'RUNNING_KEY_REMOVE', 'RELEASE_DEVICE', 'GET_LOCATION', 'GET_NUMBER'],
+      };
+    }
+    if (device.status === 'released') {
+      commandQuery.commandType = 'RELEASE_DEVICE';
+    }
+    const pendingCommands = await Command.find(commandQuery).sort({ createdAt: 1 });
     res.json({
       success: true,
       isLocked: device.isLocked,

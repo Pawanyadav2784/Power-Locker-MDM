@@ -565,7 +565,7 @@ const getCustomerStats = async (req, res) => {
 //  POST /api/customers/:id/change-status
 //  Body: { status: 'active' | 'removed' }
 //
-//  'removed' → running_key: DEACTIVE_RESTRICTION, new_key/android/iphone: RELEASE_DEVICE
+//  'removed' → running_key: RUNNING_KEY_REMOVE, new_key/android/iphone: RELEASE_DEVICE
 //  'active'  → ACTIVE_RESTRICTION    (MDM fully active, sab commands kaam karte hain)
 // ══════════════════════════════════════════════════════════
 const changeKeyStatus = async (req, res) => {
@@ -604,7 +604,7 @@ const changeKeyStatus = async (req, res) => {
       if (isRemove) {
         const keyType = String(device.keyType || customer.keyType || '').toLowerCase();
         const isRunningKey = keyType === 'running_key';
-        const removeCommand = isRunningKey ? 'DEACTIVE_RESTRICTION' : 'RELEASE_DEVICE';
+        const removeCommand = isRunningKey ? 'RUNNING_KEY_REMOVE' : 'RELEASE_DEVICE';
 
         // Running key remove reversible hai; new key remove final release hai.
         device.status   = isRunningKey ? 'removed' : 'released';

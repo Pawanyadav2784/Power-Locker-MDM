@@ -56,7 +56,8 @@ async function resolveApkProvisioningChecksum(apkUrl) {
 
 function buildProvisioningPayload({ deviceId, baseUrl, apkUrl, apkChecksum }) {
   const signatureChecksum = resolveApkSignatureChecksum();
-  const includePackageChecksum = String(process.env.PROVISIONING_INCLUDE_PACKAGE_CHECKSUM || '')
+  // Include package checksum by default for maximum compatibility with devices (e.g. Xiaomi/Redmi)
+  const includePackageChecksum = String(process.env.PROVISIONING_INCLUDE_PACKAGE_CHECKSUM || 'true')
     .toLowerCase() === 'true';
   const payload = {
     'android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME': MDM_ADMIN_COMPONENT,
@@ -91,8 +92,7 @@ async function getStrictNewKeyProvisioning(apkUrl) {
     throw new Error('New key provisioning ke liye APK_DOWNLOAD_URL HTTPS hona chahiye.');
   }
 
-  if (resolveApkSignatureChecksum()) return '';
-
+  // Do not return early. We always need the package checksum for device provisioning when downloading from custom URL.
   const apkChecksum = await resolveApkProvisioningChecksum(apkUrl);
   if (!apkChecksum) {
     throw new Error('New key provisioning checksum missing hai. APK_PROVISIONING_CHECKSUM set karo ya APK URL reachable rakho.');

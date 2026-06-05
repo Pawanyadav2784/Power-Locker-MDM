@@ -23,6 +23,7 @@ const dashboardRoutes       = require('./routes/dashboard');
 const qrRoutes              = require('./routes/qr');
 const scheduledCmdRoutes    = require('./routes/scheduledCommands');
 const downloadPageRoutes    = require('./routes/downloadPage'); // ✅ APK download page
+const profileRoutes         = require('./routes/profileRoutes'); // ✅ Profile CRUD + pic upload
 
 const app = express();
 app.set('trust proxy', 1);
@@ -63,6 +64,7 @@ app.use('/api/posts',              postsRoutes);
 app.use('/api/sms',                smsRoutes);
 app.use('/api/appupdate',          appUpdateRoutes);
 app.use('/api/v1/auth',            authRoutes);       // APK backward compat
+app.use('/api/profile',            profileRoutes);    // ✅ Profile update + pic upload
 app.use('/api',                    miscRoutes);       // misc last
 
 // ─── Health Check ─────────────────────────────────────────

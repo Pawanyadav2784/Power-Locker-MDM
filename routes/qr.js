@@ -11,7 +11,7 @@ const { protect } = require('../middleware/auth');
 
 const MDM_PACKAGE_NAME = 'com.runningkey.mdm';
 const MDM_ADMIN_COMPONENT = `${MDM_PACKAGE_NAME}/${MDM_PACKAGE_NAME}.receivers.AdminReceiver`;
-const DEFAULT_APK_URL = 'https://raw.githubusercontent.com/Pawanyadav2784/mdmlocker/main/PowerLocker-v33.0.apk';
+const DEFAULT_APK_URL = 'https://raw.githubusercontent.com/Pawanyadav2784/mdmlocker/main/PowerLocker-v34.0.apk';
 let apkChecksumCache = { url: null, checksum: null };
 
 function getPublicOrigin(req) {
@@ -36,7 +36,7 @@ function resolveApkSignatureChecksum() {
 }
 
 async function resolveApkProvisioningChecksum(apkUrl) {
-  const configuredChecksum = process.env.APK_PROVISIONING_CHECKSUM || process.env.APK_SHA256_CHECKSUM || '';
+  const configuredChecksum = process.env.APK_PROVISIONING_CHECKSUM || process.env.APK_SIGNATURE_CHECKSUM || process.env.APK_SHA256_CHECKSUM || '';
   if (configuredChecksum.trim()) return configuredChecksum.trim();
   if (apkChecksumCache.url === apkUrl && apkChecksumCache.checksum) return apkChecksumCache.checksum;
   if (typeof fetch !== 'function') return '';
@@ -81,7 +81,7 @@ function buildProvisioningPayload({ deviceId, baseUrl, apkUrl, apkChecksum }) {
   };
 
   if (includePackageChecksum && apkChecksum) {
-    payload['android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_CHECKSUM'] = apkChecksum;
+    payload['android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM'] = apkChecksum;
   }
 
   return JSON.stringify(payload);

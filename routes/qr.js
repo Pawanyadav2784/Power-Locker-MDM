@@ -425,6 +425,201 @@
 
 // // POST /api/qr/update-fcm — App updates FCM token
 // router.post('/update-fcm', async (req, res) => {
+//     await WalletTransaction.create({
+//       userId:      targetRetailerId,
+//       type:        'debit',
+//       keyType,
+//       amount:      1,
+//       description: `Device created: ${device.deviceId} — ${name}`,
+//       referenceId: device.deviceId,
+//     });
+
+//     // ── Generate QR ──────────────────────────────────────────
+//     // QR content per key type (new_key=JSON, others=URL)
+//     let qrPayload, downloadUrl, provisioningWarning;
+//     if (keyType === 'new_key') {
+//       downloadUrl = BASE_URL + '/download?deviceId=' + device.deviceId + '&type=new_key';
+//       qrPayload = buildProvisioningPayload({
+//         deviceId: device.deviceId,
+//         baseUrl: BASE_URL,
+//         apkUrl: APK_URL,
+//         apkChecksum: newKeyApkChecksum,
+//       });
+//     } else {
+//       // running_key / iphone_key - browser URL -> download page -> APK
+//       downloadUrl = BASE_URL + '/download?deviceId=' + device.deviceId + '&type=' + keyType;
+//       qrPayload = downloadUrl;
+//     }
+//     // new_key provisioning QR: errorCorrectionLevel 'L' — payload bada hota hai, 'L' se dense nahi hoga
+//     const qrEcLevel = keyType === 'new_key' ? 'L' : 'M';
+//     const qrImage = await QRCode.toDataURL(qrPayload, { errorCorrectionLevel: qrEcLevel, width: 400 });
+
+//     res.json({
+//       success:     true,
+//       deviceId:    device.deviceId,
+//       qrImage,
+//       downloadUrl,
+//       apkUrl: APK_URL,
+//       provisioningWarning,
+//       device,
+//       customer: {
+//         id:   customer._id,
+//         name: customer.name,
+//         phone: customer.phone,
+//         keyType,
+//       },
+//       remainingBalance: retailer[balanceField],
+//     });
+//   } catch (err) {
+//     console.error('QR generate error:', err);
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
+// // GET /api/qr/get-qr/:deviceId — Existing device ka QR regenerate
+// router.get('/get-qr/:deviceId', protect, async (req, res) => {
+//   try {
+//     const device = await Device.findOne({ deviceId: req.params.deviceId });
+//     if (!device) return res.status(404).json({ success: false, message: 'Device not found' });
+
+//     // ✅ Public origin se URL banao, Render proxy ke peeche bhi HTTPS rahe.
+//     const BASE_URL = getPublicOrigin(req);
+//     const APK_URL = process.env.APK_DOWNLOAD_URL || DEFAULT_APK_URL;
+//     const downloadUrl = BASE_URL + '/download?deviceId=' + device.deviceId + '&type=' + device.keyType;
+//     let qrPayload = downloadUrl;
+//     let provisioningWarning;
+//     if (device.keyType === 'new_key') {
+//       const apkChecksum = await getStrictNewKeyProvisioning(APK_URL);
+//       qrPayload = buildProvisioningPayload({
+//         deviceId: device.deviceId,
+//         baseUrl: BASE_URL,
+//         apkUrl: APK_URL,
+//         apkChecksum,
+//       });
+//     }
+//     const qrImage = await QRCode.toDataURL(qrPayload, {
+//       errorCorrectionLevel: device.keyType === 'new_key' ? 'L' : 'M', width: 400,
+//     });
+
+//     res.json({ success: true, deviceId: device.deviceId, qrImage, downloadUrl, apkUrl: APK_URL, provisioningWarning });
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
+
+
+
+// // GET /api/qr/payload/:deviceId — Get QR payload JSON
+// router.get('/payload/:deviceId', protect, async (req, res) => {
+//   try {
+//     const device = await Device.findOne({ deviceId: req.params.deviceId })
+//       .populate('customerId')
+//       .populate('retailerId', 'name phone');
+//     if (!device) return res.status(404).json({ success: false, message: 'Device not found' });
+//     res.json({
+//       success: true,
+//       payload: {
+//         deviceId: device.deviceId,
+//         server: process.env.BASE_URL,
+//         type: device.keyType,
+//         customerId: device.customerId,
+//         retailer: device.retailerId,
+//       },
+//     });
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
+// // GET /api/qr/list — Retailer's QR list (Admin = all, Retailer = own)
+// router.get('/list', protect, async (req, res) => {
+//   try {
+//     const { page = 1, limit = 50, status } = req.query;
+//     const isAdmin = req.user.role === 'super_admin' || req.user.role === 'admin';
+//     // Admin ko sare devices dikho, retailer ko sirf apne
+//     const query = isAdmin ? {} : { retailerId: req.user._id };
+//     if (status) query.status = status;
+//     const total = await Device.countDocuments(query);
+//     const devices = await Device.find(query)
+//       .populate('customerId', 'name phone')
+//       .populate('retailerId', 'name company')
+//       .sort({ createdAt: -1 })
+//       .skip((page - 1) * limit)
+//       .limit(Number(limit));
+//     res.json({ success: true, total, data: devices });
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
+
+// // POST /api/qr/enroll — MDM App calls this when QR scanned
+// router.post('/enroll', async (req, res) => {
+//   try {
+//     const {
+//       deviceId, imei, imei2, deviceName, brand, model, androidVersion,
+//       fcmToken, simNumber, buildNumber, serialNumber, manufacturer, sdkVersion
+//     } = req.body;
+
+//     const device = await Device.findOne({ deviceId });
+//     if (!device) return res.status(404).json({ success: false, message: 'Invalid Device ID' });
+//     if (device.status === 'active') {
+//       return res.status(400).json({ success: false, message: 'Device already enrolled' });
+//     }
+
+//     // Update device info
+//     device.imei = imei || '';
+//     device.imei2 = imei2 || '';
+//     device.deviceName = deviceName || '';
+//     device.brand = brand || '';
+//     device.model = model || '';
+//     device.androidVersion = androidVersion || '';
+//     device.buildNumber = buildNumber || '';
+//     device.serialNumber = serialNumber || '';
+//     device.manufacturer = manufacturer || '';
+//     device.sdkVersion = sdkVersion || '';
+//     device.fcmToken = fcmToken || '';
+//     device.simNumber = simNumber || '';
+//     device.status = 'active';
+//     device.isEnrolled = true;
+//     device.enrolledAt = new Date();
+//     await device.save();
+
+//     // ✅ Customer status + isActive update
+//     if (device.customerId) {
+//       await Customer.findByIdAndUpdate(
+//         device.customerId,
+//         { $set: { status: 'active', isActive: true } },
+//         { runValidators: true }
+//       );
+//       console.log('Customer status updated to active:', device.customerId);
+//     }
+
+//     const customer = device.customerId ? await Customer.findById(device.customerId) : null;
+
+//     res.json({
+//       success: true,
+//       message: 'Device enrolled successfully',
+//       device: {
+//         deviceId: device.deviceId,
+//         status: device.status,
+//         keyType: device.keyType,
+//         isLocked: device.isLocked,
+//       },
+//       customer: customer ? {
+//         name: customer.name, phone: customer.phone,
+//         emiType: customer.emiType, monthlyEmi: customer.monthlyEmi,
+//         loanStartDate: customer.loanStartDate,
+//       } : null,
+//     });
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// });
+
+// // POST /api/qr/update-fcm — App updates FCM token
+// router.post('/update-fcm', async (req, res) => {
 //   try {
 //     const { deviceId, fcmToken } = req.body;
 //     const device = await Device.findOneAndUpdate({ deviceId }, { fcmToken, lastSeen: new Date() }, { new: true });
@@ -494,17 +689,17 @@ async function resolveApkProvisioningChecksum(apkUrl) {
 
 function buildProvisioningPayload({ deviceId, baseUrl, apkUrl, apkChecksum }) {
   const signatureChecksum = resolveApkSignatureChecksum();
-  const includePackageChecksum = String(process.env.PROVISIONING_INCLUDE_PACKAGE_CHECKSUM || 'true')
+  const includePackageChecksum = String(process.env.PROVISIONING_INCLUDE_PACKAGE_CHECKSUM || 'false')
     .toLowerCase() === 'true';
   const payload = {
     'android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME': MDM_ADMIN_COMPONENT,
-    'android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_NAME': MDM_PACKAGE_NAME,
     'android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION': apkUrl,
     'android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM': signatureChecksum,
     'android.app.extra.PROVISIONING_SKIP_ENCRYPTION': true,
     'android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED': true,
     'android.app.extra.PROVISIONING_LOCALE': 'en_IN',
     'android.app.extra.PROVISIONING_TIME_ZONE': 'Asia/Kolkata',
+    'android.app.extra.PROVISIONING_DOWNLOAD_TIMEOUT': 3600000,
     'android.app.extra.PROVISIONING_SKIP_EDUCATION_SCREENS': true,
     'android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE': {
       deviceId,
@@ -589,7 +784,10 @@ router.post('/generate', protect, uploadFields, async (req, res) => {
     const BASE_URL = getPublicOrigin(req);
     const APK_URL = process.env.APK_DOWNLOAD_URL || DEFAULT_APK_URL;
 
-    const newKeyApkChecksum = keyType === 'new_key'
+    const includePackageChecksum = String(process.env.PROVISIONING_INCLUDE_PACKAGE_CHECKSUM || 'false')
+      .toLowerCase() === 'true';
+
+    const newKeyApkChecksum = (keyType === 'new_key' && includePackageChecksum)
       ? await getStrictNewKeyProvisioning(APK_URL)
       : '';
 
@@ -678,7 +876,11 @@ router.get('/get-qr/:deviceId', protect, async (req, res) => {
 
     let qrPayload = downloadUrl;
     if (device.keyType === 'new_key') {
-      const apkChecksum = await getStrictNewKeyProvisioning(APK_URL);
+      const includePackageChecksum = String(process.env.PROVISIONING_INCLUDE_PACKAGE_CHECKSUM || 'false')
+        .toLowerCase() === 'true';
+      const apkChecksum = includePackageChecksum
+        ? await getStrictNewKeyProvisioning(APK_URL)
+        : '';
       qrPayload = buildProvisioningPayload({
         deviceId: device.deviceId,
         baseUrl: BASE_URL,

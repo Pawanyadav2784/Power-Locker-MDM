@@ -899,6 +899,44 @@ router.get('/get-qr/:deviceId', protect, async (req, res) => {
   }
 });
 
+// GET /api/qr/debug/:deviceId (Public debug endpoint)
+router.get('/debug/:deviceId', async (req, res) => {
+  try {
+    const device = await Device.findOne({ deviceId: req.params.deviceId });
+    if (!device) return res.status(404).json({ success: false, message: 'Device not found' });
+
+    const BASE_URL = getPublicOrigin(req);
+    const APK_URL = process.env.APK_DOWNLOAD_URL || DEFAULT_APK_URL;
+    
+    const includePackageChecksum = String(process.env.PROVISIONING_INCLUDE_PACKAGE_CHECKSUM || 'false')
+      .toLowerCase() === 'true';
+    const apkChecksum = includePackageChecksum
+      ? await getStrictNewKeyProvisioning(APK_URL)
+      : '';
+
+    const payload = buildProvisioningPayload({
+      deviceId: device.deviceId,
+      baseUrl: BASE_URL,
+      apkUrl: APK_URL,
+      apkChecksum,
+    });
+
+    res.json({
+      success: true,
+      env: {
+        BASE_URL: process.env.BASE_URL,
+        APK_DOWNLOAD_URL: process.env.APK_DOWNLOAD_URL,
+        APK_PROVISIONING_CHECKSUM: process.env.APK_PROVISIONING_CHECKSUM,
+        APK_SIGNATURE_CHECKSUM: process.env.APK_SIGNATURE_CHECKSUM,
+        PROVISIONING_INCLUDE_PACKAGE_CHECKSUM: process.env.PROVISIONING_INCLUDE_PACKAGE_CHECKSUM,
+      },
+      payload: JSON.parse(payload)
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // GET /api/qr/payload/:deviceId
 router.get('/payload/:deviceId', protect, async (req, res) => {
   try {

@@ -673,6 +673,29 @@ async function resolveApkProvisioningChecksum(apkUrl) {
   const configuredChecksum = process.env.APK_PROVISIONING_CHECKSUM || process.env.APK_SHA256_CHECKSUM || '';
   if (configuredChecksum.trim()) return configuredChecksum.trim();
   if (apkChecksumCache.url === apkUrl && apkChecksumCache.checksum) return apkChecksumCache.checksum;
+
+  // Try to load from local file system if the URL matches standard pattern
+  try {
+    let localPath = null;
+    if (apkUrl.includes('/uploads/')) {
+      const parts = apkUrl.split('/uploads/');
+      localPath = path.join(__dirname, '../uploads/', parts[parts.length - 1]);
+    } else if (apkUrl.includes('/uploads\\')) {
+      const parts = apkUrl.split('/uploads\\');
+      localPath = path.join(__dirname, '../uploads/', parts[parts.length - 1]);
+    }
+    
+    if (localPath && fs.existsSync(localPath)) {
+      console.log('Calculating checksum from local file:', localPath);
+      const bytes = fs.readFileSync(localPath);
+      const checksum = toBase64Url(require('crypto').createHash('sha256').update(bytes).digest());
+      apkChecksumCache = { url: apkUrl, checksum };
+      return checksum;
+    }
+  } catch (err) {
+    console.warn('Local file checksum calculation failed:', err.message);
+  }
+
   if (typeof fetch !== 'function') return '';
   try {
     const response = await fetch(apkUrl);

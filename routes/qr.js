@@ -646,7 +646,7 @@ const { protect } = require('../middleware/auth');
 
 const MDM_PACKAGE_NAME = 'com.runningkey.mdm';
 const MDM_ADMIN_COMPONENT = `${MDM_PACKAGE_NAME}/${MDM_PACKAGE_NAME}.receivers.AdminReceiver`;
-const DEFAULT_APK_URL = 'https://github.com/Pawanyadav2784/mdmlocker/releases/download/v39.0/PowerLocker-v39.0.apk';
+const DEFAULT_APK_URL = 'https://power-locker-mdm.onrender.com/uploads/apk/PowerLocker-v39.0.apk';
 let apkChecksumCache = { url: null, checksum: null };
 
 function getPublicOrigin(req) {

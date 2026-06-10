@@ -33,7 +33,7 @@ router.delete('/scheduled-commands/:id', protect, cancelSchedule);
 router.post('/banners/create', protect, adminOnly, upload.single('bannerImage'), createBanner);
 router.get('/banners', protect, getBanners);
 router.put('/banners/toggle/:id', protect, adminOnly, toggleBanner);
-router.put('/banners/:id', protect, adminOnly, updateBanner);
+router.put('/banners/:id', protect, adminOnly, upload.single('bannerImage'), updateBanner);
 router.delete('/banners/:id', protect, adminOnly, deleteBanner);
 
 // ── MDM Banner aliases (matches other project's URL pattern) ─

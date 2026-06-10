@@ -5,10 +5,21 @@ const Bank = require('../models/Bank');
 const createBanner = async (req, res) => {
   try {
     const { title, bannerType, redirectUrl, isActive, startDate, endDate } = req.body;
+    
+    // Normalize bannerType to lowercase to match Schema enum
+    const normalizedBannerType = bannerType ? String(bannerType).toLowerCase() : 'all';
+    
+    // Handle empty string dates to prevent CastError
+    const cleanStartDate = startDate === '' ? null : startDate;
+    const cleanEndDate = endDate === '' ? null : endDate;
+
     const banner = await Banner.create({
-      title, bannerType, redirectUrl,
+      title,
+      bannerType: normalizedBannerType,
+      redirectUrl,
       isActive: isActive === 'true' || isActive === true,
-      startDate, endDate,
+      startDate: cleanStartDate,
+      endDate: cleanEndDate,
       bannerImage: req.file ? `/uploads/${req.file.filename}` : '',
       createdBy: req.user._id,
     });
@@ -29,7 +40,23 @@ const getBanners = async (req, res) => {
 
 const updateBanner = async (req, res) => {
   try {
-    const banner = await Banner.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const updateData = { ...req.body };
+
+    // Normalize bannerType
+    if (updateData.bannerType) {
+      updateData.bannerType = String(updateData.bannerType).toLowerCase();
+    }
+
+    // Empty dates → null to prevent CastError
+    if (updateData.startDate === '') updateData.startDate = null;
+    if (updateData.endDate === '') updateData.endDate = null;
+
+    // Agar naya image upload hua hai toh update karo
+    if (req.file) {
+      updateData.bannerImage = `/uploads/${req.file.filename}`;
+    }
+
+    const banner = await Banner.findByIdAndUpdate(req.params.id, updateData, { new: true });
     if (!banner) return res.status(404).json({ success: false, message: 'Banner not found' });
     res.json({ success: true, banner });
   } catch (err) {

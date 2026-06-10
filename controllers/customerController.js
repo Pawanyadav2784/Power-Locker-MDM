@@ -533,26 +533,37 @@ const getCustomerStats = async (req, res) => {
     const base = await buildBaseQuery(req.user);
     if (base === null) return res.json({ success: true, stats: {} });
 
-    const [total, active, locked, completed, overdue] = await Promise.all([
-      Customer.countDocuments(base),
-      Customer.countDocuments({ ...base, status: 'active' }),
-      Customer.countDocuments({ ...base, status: 'locked' }),
-      Customer.countDocuments({ ...base, status: 'completed' }),
-      Customer.countDocuments({ ...base, status: { $in: ['active', 'locked'] }, nextEmiDate: { $lt: new Date() } }),
+    // Ek hi aggregate se sab status counts nikalo — exact DB values
+    const [statusAgg, collectionAgg, overdue] = await Promise.all([
+      Customer.aggregate([
+        { $match: base },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+      Customer.aggregate([
+        { $match: base },
+        { $group: { _id: null, totalCollection: { $sum: '$totalPaid' }, totalLoan: { $sum: '$totalAmount' } } },
+      ]),
+      Customer.countDocuments({
+        ...base,
+        status: { $in: ['active', 'locked'] },
+        nextEmiDate: { $lt: new Date() },
+      }),
     ]);
 
-    // Total collection amount
-    const agg = await Customer.aggregate([
-      { $match: base },
-      { $group: { _id: null, totalCollection: { $sum: '$totalPaid' }, totalLoan: { $sum: '$totalAmount' } } },
-    ]);
+    // Har status ka exact count nikalo
+    const counts = { total: 0, active: 0, pending: 0, locked: 0, completed: 0, removed: 0, defaulted: 0, closed: 0 };
+    statusAgg.forEach(s => {
+      if (s._id) counts[s._id] = (counts[s._id] || 0) + s.count;
+      counts.total += s.count;
+    });
 
     res.json({
       success: true,
       stats: {
-        total, active, locked, completed, overdue,
-        totalCollection: agg[0]?.totalCollection || 0,
-        totalLoan:       agg[0]?.totalLoan || 0,
+        ...counts,
+        overdue,
+        totalCollection: collectionAgg[0]?.totalCollection || 0,
+        totalLoan:       collectionAgg[0]?.totalLoan       || 0,
       },
     });
   } catch (err) {

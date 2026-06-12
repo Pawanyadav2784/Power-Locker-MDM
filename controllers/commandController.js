@@ -267,14 +267,50 @@ const ackCommand = async (req, res) => {
   try {
     const { commandId, status, deviceResponse, errorMessage } = req.body;
     if (!commandId) return res.status(400).json({ success: false, message: 'commandId required' });
+    if (!['delivered', 'executed', 'failed'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'status delivered, executed ya failed hona chahiye',
+      });
+    }
 
-    const update = { status };
-    if (status === 'executed')  update.executedAt  = new Date();
-    if (status === 'delivered') update.deliveredAt = new Date();
-    if (deviceResponse !== undefined) update.deviceResponse = deviceResponse;
-    if (errorMessage) update.errorMessage = errorMessage;
+    const command = await Command.findById(commandId);
+    if (!command) {
+      return res.status(404).json({ success: false, message: 'Command not found' });
+    }
 
-    const command = await Command.findByIdAndUpdate(commandId, update, { new: true });
+    const now = new Date();
+    let retryScheduled = false;
+    command.lastAttemptAt = now;
+    if (deviceResponse !== undefined) command.deviceResponse = deviceResponse;
+
+    if (status === 'executed') {
+      command.status = 'executed';
+      command.executedAt = now;
+      command.errorMessage = '';
+      command.nextRetryAt = undefined;
+      command.failedAt = undefined;
+    } else if (status === 'delivered') {
+      command.status = 'delivered';
+      command.deliveredAt = now;
+    } else {
+      command.retryCount = (Number(command.retryCount) || 0) + 1;
+      command.errorMessage = String(errorMessage || 'Device command execution failed');
+
+      if (command.retryCount < (Number(command.maxRetries) || 3)) {
+        const retryDelaySeconds = Math.min(300, 10 * (2 ** (command.retryCount - 1)));
+        command.status = 'pending';
+        command.deliveryMethod = 'poll';
+        command.nextRetryAt = new Date(now.getTime() + retryDelaySeconds * 1000);
+        retryScheduled = true;
+      } else {
+        command.status = 'failed';
+        command.failedAt = now;
+        command.nextRetryAt = undefined;
+      }
+    }
+
+    await command.save();
 
     // GET_NUMBER response → save simNumber to device
     if (command?.commandType === 'GET_NUMBER' && status === 'executed' && deviceResponse) {
@@ -302,7 +338,15 @@ const ackCommand = async (req, res) => {
       }
     }
 
-    res.json({ success: true });
+    res.json({
+      success: true,
+      status: command.status,
+      retryScheduled,
+      retryCount: command.retryCount,
+      maxRetries: command.maxRetries,
+      nextRetryAt: command.nextRetryAt || null,
+      errorMessage: command.errorMessage || null,
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -320,6 +364,11 @@ const pollCommands = async (req, res) => {
     const commandQuery = {
       deviceId: device._id,
       status:   { $in: ['pending', 'sent'] },
+      $or: [
+        { nextRetryAt: { $exists: false } },
+        { nextRetryAt: null },
+        { nextRetryAt: { $lte: new Date() } },
+      ],
     };
     if (device.status === 'removed') {
       commandQuery.commandType = {

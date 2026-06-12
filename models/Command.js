@@ -23,6 +23,10 @@ const commandSchema = new mongoose.Schema({
       'DEBUGGING_ON', 'DEBUGGING_OFF',
       'FACTORY_RESET_ON', 'FACTORY_RESET_OFF',
       'SOCIALMEDIA_LOCK', 'SOCIALMEDIA_UNLOCK',
+      'SIM_LOCK', 'SIM_UNLOCK',
+      'VOLUME_ON', 'VOLUME_OFF',
+      'WALLPAPER_ON', 'WALLPAPER_OFF',
+      'AUDIO_ON', 'AUDIO_OFF',
       // Custom
       'CUSTOM',
     ],
@@ -48,6 +52,11 @@ const commandSchema = new mongoose.Schema({
   // Response from device after execution
   deviceResponse: { type: mongoose.Schema.Types.Mixed, default: null },
   errorMessage:   { type: String, default: '' },
+  retryCount:     { type: Number, default: 0, min: 0 },
+  maxRetries:     { type: Number, default: 3, min: 0, max: 10 },
+  nextRetryAt:    { type: Date },
+  lastAttemptAt:  { type: Date },
+  failedAt:       { type: Date },
 
   sentAt:      { type: Date },
   deliveredAt: { type: Date },

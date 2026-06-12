@@ -21,9 +21,9 @@ const COMMAND_ALIASES = {
   APP_BLOCK: 'SOCIALMEDIA_LOCK',
   APP_UNBLOCK: 'SOCIALMEDIA_UNLOCK',
   PLAY_SOUND: 'PLAY_ALERT',
-  AUDIO_ON: 'PLAY_ALERT',
-  STOP_SOUND: 'CUSTOM',
-  AUDIO_OFF: 'CUSTOM',
+  AUDIO_ON: 'AUDIO_ON',
+  STOP_SOUND: 'AUDIO_OFF',
+  AUDIO_OFF: 'AUDIO_OFF',
 };
 
 const SUPPORTED_COMMANDS = new Set([
@@ -35,6 +35,8 @@ const SUPPORTED_COMMANDS = new Set([
   'ACTIVE_RESTRICTION', 'DEACTIVE_RESTRICTION', 'RUNNING_KEY_REMOVE',
   'DEBUGGING_ON', 'DEBUGGING_OFF', 'FACTORY_RESET_ON', 'FACTORY_RESET_OFF',
   'SOCIALMEDIA_LOCK', 'SOCIALMEDIA_UNLOCK', 'CUSTOM',
+  'SIM_LOCK', 'SIM_UNLOCK', 'VOLUME_ON', 'VOLUME_OFF',
+  'WALLPAPER_ON', 'WALLPAPER_OFF', 'AUDIO_ON', 'AUDIO_OFF',
 ]);
 
 const ALLOWED_ON_REMOVED_DEVICE = new Set([
@@ -368,8 +370,8 @@ function commandResponse(command, device, fcm, alreadyExists = false) {
       priority: Number(command.priority) || 5,
       result: command.deviceResponse || null,
       error: command.errorMessage || null,
-      retry_count: 0,
-      max_retries: 10,
+      retry_count: Number(command.retryCount) || 0,
+      max_retries: Number(command.maxRetries) || 3,
       executed_at: command.executedAt || null,
       created_by: command.createdBy || null,
       policy_id: null,

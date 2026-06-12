@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const User = require('../models/User');
+const Customer = require('../models/Customer');
 const { absoluteUrl } = require('../utils/pLockerCompatibility');
 const { getManagedUserIds } = require('../utils/deviceAccess');
 
@@ -166,7 +167,11 @@ async function listVendors(req, res) {
         .skip((page - 1) * limit)
         .limit(limit),
     ]);
-    const data = users.map((user) => serializeVendor(req, user));
+    const data = await Promise.all(users.map(async (user) => {
+      const serialized = serializeVendor(req, user);
+      serialized.customers = await Customer.countDocuments({ retailerId: user._id });
+      return serialized;
+    }));
     return res.json({
       success: true,
       status: 200,
@@ -184,7 +189,9 @@ async function getVendor(req, res) {
   try {
     const user = await accessibleUser(req.user, req.params.id);
     if (!user) return res.status(404).json({ success: false, status: 404, message: 'Retailer not found ya access denied.' });
-    return res.json({ success: true, status: 200, data: serializeVendor(req, user) });
+    const data = serializeVendor(req, user);
+    data.customers = await Customer.countDocuments({ retailerId: user._id });
+    return res.json({ success: true, status: 200, data });
   } catch (err) {
     return res.status(500).json({ success: false, status: 500, message: err.message });
   }

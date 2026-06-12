@@ -1,0 +1,31 @@
+🏓 Self-ping cron started → every 14 min to prevent Render cold start
+🚀 Running Key MDM Server → http://localhost:5055
+📡 Health: http://localhost:5055/api/health
+✅ MongoDB Connected: ac-vakin0b-shard-00-00.pdbl5mj.mongodb.net
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]
+Scheduled command executed: 6a2bf566440c663f3ec677e3
+📱 SMS to 9999999999: [Power Locker] LOCK:2026-00065 Your device has been locked. Offline smoke lock
+📱 SMS to 9999999999: [Power Locker] UNLOCK:2026-00065 Your device has been unlocked. Please keep up your payments.
+🏓 Self-ping OK → https://power-locker-mdm.onrender.com/api/health [200]

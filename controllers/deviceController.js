@@ -2,6 +2,7 @@ const Device  = require('../models/Device');
 const Command = require('../models/Command');
 const Customer = require('../models/Customer');
 const { sendFCM } = require('../utils/fcmHelper');
+const { getDeviceScope } = require('../utils/deviceAccess');
 
 // ── FCM Command Helper ─────────────────────────────────────
 const dispatchCommand = async (device, commandType, payload = {}, label = '', createdBy = null) => {
@@ -19,15 +20,16 @@ const dispatchCommand = async (device, commandType, payload = {}, label = '', cr
 };
 
 // ── Role-based device filter ───────────────────────────────
-const deviceFilter = (user) =>
-  user.role === 'super_admin' ? {} : { retailerId: user._id };
+const deviceFilter = async (user) => {
+  return await getDeviceScope(user);
+};
 
 // ══ GET ALL DEVICES ════════════════════════════════════════
 // GET /api/devices
 const getAllDevices = async (req, res) => {
   try {
     const { status, keyType, search, page = 1, limit = 20 } = req.query;
-    const query = deviceFilter(req.user);
+    const query = await deviceFilter(req.user);
     if (status)  query.status  = status;
     if (keyType) query.keyType = keyType;
     if (search) {
@@ -102,7 +104,7 @@ const deleteDevice = async (req, res) => {
 // GET /api/devices/statistics
 const getStatistics = async (req, res) => {
   try {
-    const q = deviceFilter(req.user);
+    const q = await deviceFilter(req.user);
     const [total, locked, active, pending, unenrolled] = await Promise.all([
       Device.countDocuments(q),
       Device.countDocuments({ ...q, isLocked: true }),

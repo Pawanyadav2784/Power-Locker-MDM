@@ -10,34 +10,12 @@ const {
 } = require('../utils/emiSchedule');
 
 // ──────────────────────────────────────────────────────────
-//  HELPER: BFS — all retailer IDs under a parent
-// ──────────────────────────────────────────────────────────
-const getAllRetailerIds = async (startId) => {
-  const visited = new Set();
-  const queue   = [String(startId)];
-  const ids     = [];
-  while (queue.length) {
-    const cur = queue.shift();
-    if (visited.has(cur)) continue;
-    visited.add(cur);
-    const children = await User.find({ parentId: cur, isDeleted: { $ne: true } }).select('_id role');
-    for (const c of children) {
-      if (c.role === 'retailer') ids.push(c._id);
-      else queue.push(String(c._id));
-    }
-  }
-  return ids;
-};
-
-// ──────────────────────────────────────────────────────────
 //  HELPER: Build role-based base query
 // ──────────────────────────────────────────────────────────
+const { getDeviceScope } = require('../utils/deviceAccess');
+
 const buildBaseQuery = async (user) => {
-  if (user.role === 'super_admin') return {};
-  if (user.role === 'retailer') return { retailerId: user._id };
-  const ids = await getAllRetailerIds(user._id);
-  if (!ids.length) return null; // no retailers → empty result
-  return { retailerId: { $in: ids } };
+  return await getDeviceScope(user);
 };
 
 // ──────────────────────────────────────────────────────────

@@ -72,6 +72,7 @@ function serializeCustomer(customer, device) {
     userId: device._id,
     keyId: device._id,
     deviceId: device.deviceId,
+    qrCode: customer.qrCode || device.deviceId || '',
     name: customer.name,
     phone: customer.phone,
     email: customer.email,

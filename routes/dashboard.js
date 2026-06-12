@@ -9,6 +9,7 @@ const {
   getDashboardPLocker,
   getKeySummaryPLocker,
 } = require('../controllers/dashboardCompatibilityController');
+const { getDeviceScope } = require('../utils/deviceAccess');
 
 // ════════════════════════════════════════════════════════════
 //  GET /api/dashboard
@@ -17,9 +18,8 @@ router.get('/', protect, getDashboardPLocker);
 router.get('/legacy', protect, async (req, res) => {
   try {
     const isAdmin   = req.user.role === 'super_admin';
-    const uid       = new mongoose.Types.ObjectId(req.user._id);
-    const devQuery  = isAdmin ? {} : { retailerId: uid };
-    const custQuery = isAdmin ? {} : { retailerId: uid };
+    const devQuery  = await getDeviceScope(req.user);
+    const custQuery = await getDeviceScope(req.user);
 
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
@@ -158,8 +158,7 @@ router.get('/monthly-registrations', protect, async (req, res) => {
 router.get('/key-summary', protect, getKeySummaryPLocker);
 router.get('/key-summary/legacy', protect, async (req, res) => {
   try {
-    const uid   = new mongoose.Types.ObjectId(req.user._id);
-    const query = req.user.role === 'super_admin' ? {} : { retailerId: uid };
+    const query = await getDeviceScope(req.user);
 
     const summary = await Device.aggregate([
       { $match: query },
@@ -184,9 +183,7 @@ router.get('/key-summary/legacy', protect, async (req, res) => {
 // ════════════════════════════════════════════════════════════
 router.get('/stats', protect, async (req, res) => {
   try {
-    const uid       = new mongoose.Types.ObjectId(req.user._id);
-    const isAdmin   = req.user.role === 'super_admin';
-    const devQuery  = isAdmin ? {} : { retailerId: uid };
+    const devQuery  = await getDeviceScope(req.user);
 
     const [total, active, locked, pending] = await Promise.all([
       Device.countDocuments(devQuery),

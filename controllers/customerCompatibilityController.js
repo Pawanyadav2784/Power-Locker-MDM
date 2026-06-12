@@ -2,35 +2,10 @@ const Customer = require('../models/Customer');
 const User = require('../models/User');
 const { serializeCustomer } = require('../utils/pLockerCompatibility');
 
-const getAllRetailerIds = async (startId) => {
-  const visited = new Set();
-  const queue = [String(startId)];
-  const ids = [];
-
-  while (queue.length) {
-    const current = queue.shift();
-    if (visited.has(current)) continue;
-    visited.add(current);
-
-    const children = await User.find({
-      parentId: current,
-      isDeleted: { $ne: true },
-    }).select('_id role');
-
-    for (const child of children) {
-      if (child.role === 'retailer') ids.push(child._id);
-      else queue.push(String(child._id));
-    }
-  }
-
-  return ids;
-};
+const { getDeviceScope } = require('../utils/deviceAccess');
 
 const buildBaseQuery = async (user) => {
-  if (user.role === 'super_admin') return {};
-  if (user.role === 'retailer') return { retailerId: user._id };
-  const retailerIds = await getAllRetailerIds(user._id);
-  return retailerIds.length ? { retailerId: { $in: retailerIds } } : null;
+  return await getDeviceScope(user);
 };
 
 const KEY_TYPE_FILTER = {

@@ -11,6 +11,7 @@ const User   = require('../models/User');
 const WalletTransaction = require('../models/WalletTransaction');
 const Device = require('../models/Device');
 const { generateToken } = require('../middleware/auth');
+const { getManagedUserIds } = require('../utils/deviceAccess');
 
 // ── Who can create whom ────────────────────────────────────
 const CAN_CREATE = {
@@ -222,8 +223,12 @@ const getAllVendors = async (req, res) => {
 
     const query = { role: { $ne: 'super_admin' }, isDeleted: { $ne: true } };
 
-    // Non-admin sees only their direct children
-    if (!isAdmin) query.parentId = req.user._id;
+    // Non-admin sees all descendants in their downline
+    if (!isAdmin) {
+      const descendants = await getManagedUserIds(req.user);
+      const childIds = descendants.filter((id) => String(id) !== String(req.user._id));
+      query._id = { $in: childIds };
+    }
 
     if (roleFilter)   query.role     = roleFilter;
     if (parentId)     query.parentId = parentId;
@@ -316,7 +321,10 @@ const updateVendorByBody = async (req, res) => {
     const isAdmin = req.user.role === 'super_admin';
     if (!isAdmin) {
       const target = await User.findById(id);
-      if (!target || String(target.parentId) !== String(req.user._id))
+      if (!target) return res.status(404).json({ success: false, message: 'Vendor not found' });
+      const descendants = await getManagedUserIds(req.user);
+      const isDescendant = descendants.some(d => String(d) === String(target._id));
+      if (!isDescendant || String(target._id) === String(req.user._id))
         return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
@@ -343,8 +351,12 @@ const toggleVendorStatus = async (req, res) => {
     if (!vendor) return res.status(404).json({ success: false, message: 'Vendor not found' });
 
     const isAdmin  = req.user.role === 'super_admin';
-    const isParent = String(vendor.parentId) === String(req.user._id);
-    if (!isAdmin && !isParent)
+    let isAllowed = isAdmin;
+    if (!isAdmin) {
+      const descendants = await getManagedUserIds(req.user);
+      isAllowed = descendants.some(d => String(d) === String(vendor._id)) && String(vendor._id) !== String(req.user._id);
+    }
+    if (!isAllowed)
       return res.status(403).json({ success: false, message: 'Access denied' });
 
     vendor.isActive = !vendor.isActive;
@@ -373,8 +385,12 @@ const softDeleteVendor = async (req, res) => {
     const target   = await User.findById(id);
     if (!target) return res.status(404).json({ success: false, message: 'Vendor not found' });
 
-    const isParent = String(target.parentId) === String(req.user._id);
-    if (!isAdmin && !isParent)
+    let isAllowed = isAdmin;
+    if (!isAdmin) {
+      const descendants = await getManagedUserIds(req.user);
+      isAllowed = descendants.some(d => String(d) === String(target._id)) && String(target._id) !== String(req.user._id);
+    }
+    if (!isAllowed)
       return res.status(403).json({ success: false, message: 'Access denied' });
 
     target.isDeleted     = true;

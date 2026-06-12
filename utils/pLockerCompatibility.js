@@ -54,6 +54,7 @@ function serializeDevice(device) {
   return {
     _id: idOf(device),
     device_id: device.deviceId || '',
+    deviceId: device.deviceId || '',
     enrollment_token: device.deviceId || '',
     fcm_token: device.fcmToken || '',
     fcm_token_updated_at: iso(device.updatedAt),
@@ -165,6 +166,8 @@ function serializeCustomer(req, customer) {
   return {
     _id: idOf(customer),
     userId: idOf(device),
+    qrCode: customer.qrCode || device?.deviceId || '',
+    deviceId: device?.deviceId || customer.qrCode || '',
     profileImage: absoluteUrl(req, customer.profileImage || customer.photo),
     name: customer.name || '',
     email: customer.email || '',

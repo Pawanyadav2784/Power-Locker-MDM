@@ -92,6 +92,7 @@ const userSchema = new mongoose.Schema({
   androidBalance:    { type: Number, default: 0 },
   runningKeyBalance: { type: Number, default: 0 },
   iphoneBalance:     { type: Number, default: 0 },
+  securityPin:       { type: String, default: null },
 
   // ─── Single Session ────────────────────────────────────
   activeToken:    { type: String, default: null },
@@ -197,6 +198,7 @@ userSchema.methods.toPublicProfile = function () {
     kycStatus:    this.kycStatus,
     isActive:     this.isActive,
     isVerified:   this.isVerified,
+    isPinSet:     Boolean(this.securityPin),
     // ✅ Universal key balance — sabka ek hi field (running_key is the master)
     balance:           this.runningKeyBalance || 0,   // frontend reads data.balance
     runningKeyBalance: this.runningKeyBalance  || 0,

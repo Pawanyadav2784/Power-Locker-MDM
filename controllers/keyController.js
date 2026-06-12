@@ -17,6 +17,7 @@
 const User              = require('../models/User');
 const WalletTransaction = require('../models/WalletTransaction');
 const Device            = require('../models/Device');
+const { getManagedUserIds } = require('../utils/deviceAccess');
 
 // ══════════════════════════════════════════════════════════
 //  Hierarchy: kaun apne neeche kisko transfer kar sakta hai
@@ -741,9 +742,15 @@ const getLedger = async (req, res) => {
 
     const isAdmin = req.user.role === 'super_admin';
     const scopedUserId = isAdmin && userId ? userId : req.user._id;
-    const query = isAdmin && !userId
-      ? {}
-      : { $or: [{ userId: scopedUserId }, { toUserId: scopedUserId }, { fromUserId: scopedUserId }] };
+    let query = {};
+    if (isAdmin && !userId) {
+      query = {};
+    } else {
+      const targetUser = (isAdmin && userId) ? await User.findById(userId) : req.user;
+      if (!targetUser) return res.status(404).json({ success: false, message: 'User not found' });
+      const descendants = await getManagedUserIds(targetUser);
+      query = { $or: [{ userId: { $in: descendants } }, { toUserId: { $in: descendants } }, { fromUserId: { $in: descendants } }] };
+    }
 
     if (keyType) query.keyType = keyType;
     if (type)    query.type    = type;

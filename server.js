@@ -26,6 +26,7 @@ const downloadPageRoutes    = require('./routes/downloadPage'); // ✅ APK downl
 const profileRoutes         = require('./routes/profileRoutes'); // ✅ Profile CRUD + pic upload
 const deviceCompatibilityRoutes = require('./routes/deviceCompatibilityRoutes');
 const mdmCompatibilityRoutes = require('./routes/mdmCompatibilityRoutes');
+const userCompatibilityRoutes = require('./routes/userCompatibilityRoutes');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -69,6 +70,10 @@ app.use('/api/v1/auth',            authRoutes);       // APK backward compat
 app.use('/api/v1/device',          deviceCompatibilityRoutes); // P Locker QR compatibility
 app.use('/api/mdm',                mdmCompatibilityRoutes); // P Locker MDM compatibility
 app.use('/api/profile',            profileRoutes);    // ✅ Profile update + pic upload
+app.use('/user',                   userCompatibilityRoutes);
+const { protect } = require('./middleware/auth');
+const { getDashboardPLocker } = require('./controllers/dashboardCompatibilityController');
+app.get('/dashboard',              protect, getDashboardPLocker);
 app.use('/api',                    miscRoutes);       // misc last
 
 // ─── Health Check ─────────────────────────────────────────

@@ -55,12 +55,17 @@ function toNumber(value) {
 }
 
 function uploadedUrl(file) {
-  return file ? `/uploads/customers/${file.filename}` : '';
+  if (!file) return '';
+  if (file.path && /^https?:\/\//i.test(file.path)) {
+    return file.path;
+  }
+  return file.filename ? `/uploads/customers/${file.filename}` : '';
 }
 
 function cleanupUploadedFiles(files = {}) {
   Object.values(files).flat().forEach((file) => {
     if (!file?.path) return;
+    if (/^https?:\/\//i.test(file.path)) return;
     fs.unlink(file.path, () => {});
   });
 }

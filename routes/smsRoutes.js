@@ -7,6 +7,7 @@ const express = require('express');
 const router  = express.Router();
 const Device  = require('../models/Device');
 const Command = require('../models/Command');
+const Customer = require('../models/Customer');
 const { protect } = require('../middleware/auth');
 
 // ── Helper: Fast91 / Any SMS Gateway sender
@@ -55,6 +56,14 @@ router.post('/send-lock', protect, async (req, res) => {
     device.status   = 'locked';
     device.lockMessage = message || 'Device locked. Please pay your EMI.';
     await device.save();
+    if (device.customerId) {
+      await Customer.findByIdAndUpdate(device.customerId, {
+        status: 'locked',
+        isDeviceLocked: true,
+        lockReason: 'offline',
+        lastLockedAt: new Date(),
+      });
+    }
 
     // Log command
     await Command.create({
@@ -100,6 +109,14 @@ router.post('/send-unlock', protect, async (req, res) => {
     device.status     = 'active';
     device.lockMessage = '';
     await device.save();
+    if (device.customerId) {
+      await Customer.findByIdAndUpdate(device.customerId, {
+        status: 'active',
+        isDeviceLocked: false,
+        lockReason: '',
+        lastUnlockedAt: new Date(),
+      });
+    }
 
     await Command.create({
       deviceId:       device._id,

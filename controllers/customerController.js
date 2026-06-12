@@ -3,6 +3,11 @@ const Device   = require('../models/Device');
 const Command  = require('../models/Command');
 const User     = require('../models/User');
 const { sendFCM } = require('../utils/fcmHelper');
+const {
+  ensureEmiSchedule,
+  idOf,
+  projectEmiSchedule,
+} = require('../utils/emiSchedule');
 
 // ──────────────────────────────────────────────────────────
 //  HELPER: BFS — all retailer IDs under a parent
@@ -39,16 +44,28 @@ const buildBaseQuery = async (user) => {
 //  HELPER: Dispatch MDM command via FCM
 // ──────────────────────────────────────────────────────────
 const dispatchMDM = async (device, commandType, payload = {}, label = '', createdBy = null) => {
+  const hasFcm = Boolean(device.fcmToken);
   const cmd = await Command.create({
     deviceId: device._id, commandType, payload, label,
-    deliveryMethod: 'fcm', status: 'sent',
-    sentAt: new Date(), createdBy,
+    deliveryMethod: hasFcm ? 'fcm' : 'poll',
+    status: hasFcm ? 'sent' : 'pending',
+    sentAt: hasFcm ? new Date() : undefined,
+    createdBy,
   });
-  if (device.fcmToken) {
+  if (hasFcm) {
     const r = await sendFCM(device.fcmToken, commandType, label || commandType, {
-      command: commandType, deviceId: device.deviceId, ...payload,
+      command: commandType,
+      commandType,
+      commandId: String(cmd._id),
+      deviceId: device.deviceId,
+      ...payload,
     });
-    if (!r.success) { cmd.status = 'failed'; await cmd.save(); }
+    if (!r.success) {
+      cmd.deliveryMethod = 'poll';
+      cmd.status = 'pending';
+      cmd.errorMessage = r.error || 'FCM delivery failed';
+      await cmd.save();
+    }
   }
   return cmd;
 };
@@ -178,22 +195,66 @@ const updateCustomer = async (req, res) => {
 };
 
 // ══════════════════════════════════════════════════════════
-//  5. DELETE CUSTOMER
+//  5. SOFT REMOVE CUSTOMER
 //  DELETE /api/customers/:id
 // ══════════════════════════════════════════════════════════
 const deleteCustomer = async (req, res) => {
   try {
-    const customer = await Customer.findById(req.params.id);
-    if (!customer) return res.status(404).json({ success: false, message: 'Customer not found' });
-
-    // Unlink device
-    if (customer.deviceId) {
-      await Device.findByIdAndUpdate(customer.deviceId, { customerId: null });
+    const base = await buildBaseQuery(req.user);
+    if (base === null) {
+      return res.status(404).json({ success: false, message: 'Customer not found or access denied' });
     }
-    await Customer.findByIdAndDelete(req.params.id);
-    res.json({ success: true, message: 'Customer deleted' });
+
+    const customer = await Customer.findOne({ ...base, _id: req.params.id }).populate('deviceId');
+    if (!customer) return res.status(404).json({ success: false, message: 'Customer not found' });
+    if (customer.status === 'removed') {
+      return res.json({
+        success: true,
+        message: 'Customer already soft-removed',
+        hard_deleted: false,
+      });
+    }
+
+    customer.status = 'removed';
+    customer.isDeviceLocked = false;
+    customer.lockReason = 'customer_removed';
+
+    let command = null;
+    const device = customer.deviceId;
+    if (device && typeof device === 'object') {
+      const isRunningKey = customer.keyType === 'running_key';
+      const commandType = isRunningKey ? 'RUNNING_KEY_REMOVE' : 'UNENROLL_DEVICE';
+      device.status = 'removed';
+      device.isLocked = false;
+      device.mdmActive = false;
+      device.isEnrolled = isRunningKey;
+      device.lockMessage = '';
+      device.lockPhone = '';
+      await device.save();
+      command = await dispatchMDM(
+        device,
+        commandType,
+        { reason: 'customer_removed' },
+        'Customer Soft Removed',
+        req.user._id
+      );
+    }
+
+    await customer.save();
+    return res.json({
+      success: true,
+      message: 'Customer soft-removed; record preserved',
+      hard_deleted: false,
+      customer,
+      command: command ? {
+        _id: command._id,
+        commandType: command.commandType,
+        status: command.status,
+        deliveryMethod: command.deliveryMethod,
+      } : null,
+    });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    return res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -297,31 +358,66 @@ const unlinkDevice = async (req, res) => {
 const recordEmiPayment = async (req, res) => {
   try {
     const { amount, method = 'cash', referenceNo = '', note = '' } = req.body;
-    if (!amount) return res.status(400).json({ success: false, message: 'amount required' });
+    const paidAmount = Number(amount);
+    const normalizedMethod = String(method || 'cash').trim().toLowerCase();
+    if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
+      return res.status(400).json({ success: false, message: 'valid amount required' });
+    }
+    if (!['cash', 'online', 'upi', 'bank', 'other'].includes(normalizedMethod)) {
+      return res.status(400).json({ success: false, message: 'invalid payment method' });
+    }
 
-    const customer = await Customer.findById(req.params.id).populate('deviceId');
+    const base = await buildBaseQuery(req.user);
+    if (base === null) {
+      return res.status(404).json({ success: false, message: 'Customer not found or access denied' });
+    }
+
+    const customer = await Customer.findOne({ ...base, _id: req.params.id }).populate('deviceId');
     if (!customer) return res.status(404).json({ success: false, message: 'Customer not found' });
 
-    // Push to history
+    ensureEmiSchedule(customer);
+    const installment = customer.emiSchedule.find((item) => item.status !== 'paid');
+    if (!installment) {
+      return res.status(409).json({ success: false, message: 'All EMI installments are already paid' });
+    }
+
+    const paidAt = new Date();
+    const baseAmount = Number(installment.amount) || Number(customer.monthlyEmi) || paidAmount;
+    const overdueAmount = Math.max(0, paidAmount - baseAmount);
+    installment.status = 'paid';
+    installment.paymentMode = normalizedMethod;
+    installment.paidAt = paidAt;
+    installment.overdueAmount = overdueAmount;
+    installment.referenceNo = referenceNo;
+    installment.note = note;
+    installment.updatedBy = req.user._id;
+
     customer.emiHistory.push({
-      amount: Number(amount), method, referenceNo, note,
-      paidAt: new Date(), recordedBy: req.user._id,
+      amount: paidAmount,
+      method: normalizedMethod,
+      referenceNo,
+      note: note || `EMI installment ${installment.installmentNo} paid`,
+      paidAt,
+      emiId: idOf(installment),
+      installmentNo: installment.installmentNo,
+      action: 'paid',
+      overdueAmount,
+      recordedBy: req.user._id,
     });
 
-    // Update counts
-    customer.emiPaid      = (customer.emiPaid || 0) + 1;
-    customer.emiRemaining = Math.max(0, (customer.emiRemaining ?? customer.emiMonths) - 1);
-    customer.totalPaid    = (customer.totalPaid || 0) + Number(amount);
-    customer.overdueCount  = 0;
-    customer.overdueAmount = 0;
-    customer.lastEmiDate   = new Date();
-
-    // Advance next EMI date
-    const next = new Date(customer.nextEmiDate || new Date());
-    if (customer.emiType === 'daily')   next.setDate(next.getDate() + 1);
-    else if (customer.emiType === 'weekly') next.setDate(next.getDate() + 7);
-    else next.setMonth(next.getMonth() + 1);
-    customer.nextEmiDate = next;
+    const schedule = projectEmiSchedule(customer);
+    const unpaid = schedule.list.filter((item) => item.status !== 'PAID');
+    const overdueUnpaid = unpaid.filter((item) => new Date(item.dueDate) < paidAt);
+    customer.emiPaid = schedule.progress.paidEmi;
+    customer.emiRemaining = Math.max(0, schedule.progress.totalEmi - schedule.progress.paidEmi);
+    customer.totalPaid = (customer.totalPaid || 0) + paidAmount;
+    customer.overdueCount = overdueUnpaid.length;
+    customer.overdueAmount = overdueUnpaid.reduce(
+      (sum, item) => sum + (Number(item.overdueAmount) || 0),
+      0
+    );
+    customer.lastEmiDate = paidAt;
+    customer.nextEmiDate = unpaid.length ? new Date(unpaid[0].dueDate) : null;
 
     // Auto-complete & auto-unlock
     if (customer.emiRemaining === 0) {

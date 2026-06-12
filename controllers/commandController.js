@@ -18,6 +18,7 @@
  */
 
 const Command = require('../models/Command');
+const Customer = require('../models/Customer');
 const Device  = require('../models/Device');
 const { sendFCM } = require('../utils/fcmHelper');
 
@@ -29,12 +30,15 @@ const DEFAULT_SOCIAL_APPS = [
 
 // ── FCM dispatch helper ────────────────────────────────────
 const dispatch = async (device, commandType, payload = {}, label = '', userId = null) => {
+  const hasFcm = Boolean(device.fcmToken);
   const cmd = await Command.create({
     deviceId: device._id, commandType, payload, label,
-    deliveryMethod: 'fcm', status: 'sent',
-    sentAt: new Date(), createdBy: userId,
+    deliveryMethod: hasFcm ? 'fcm' : 'poll',
+    status: hasFcm ? 'sent' : 'pending',
+    sentAt: hasFcm ? new Date() : undefined,
+    createdBy: userId,
   });
-  if (device.fcmToken) {
+  if (hasFcm) {
     const r = await sendFCM(device.fcmToken, commandType, label || commandType,
       {
         command: commandType,
@@ -43,8 +47,9 @@ const dispatch = async (device, commandType, payload = {}, label = '', userId = 
         ...payload
       });
     if (!r.success) {
-      // ✅ FCM fail hone pe bhi 'sent' rakho — device poll se utha lega
       cmd.deliveryMethod = 'poll';
+      cmd.status = 'pending';
+      cmd.errorMessage = r.error || 'FCM delivery failed';
       await cmd.save();
       console.log(`⚠️ FCM failed for ${commandType}, falling back to poll for device ${device.deviceId}`);
     }
@@ -54,20 +59,45 @@ const dispatch = async (device, commandType, payload = {}, label = '', userId = 
 
 // ── Auto state updates per command ────────────────────────
 const applyStateChange = async (device, command, payload) => {
+  const customerUpdate = {};
   if (command === 'LOCK_DEVICE') {
     device.isLocked = true; device.status = 'locked';
     device.lockMessage = payload?.message || 'Device locked';
     device.lockPhone   = payload?.phone_number || '';
+    Object.assign(customerUpdate, {
+      status: 'locked',
+      isDeviceLocked: true,
+      lockReason: 'manual',
+      lastLockedAt: new Date(),
+    });
   } else if (command === 'OFFLINE_LOCK') {
     device.isLocked = true; device.status = 'locked';
     device.lockMessage = payload?.message || 'Device locked offline';
     device.lockPhone   = payload?.phone_number || '';
+    Object.assign(customerUpdate, {
+      status: 'locked',
+      isDeviceLocked: true,
+      lockReason: 'offline',
+      lastLockedAt: new Date(),
+    });
   } else if (command === 'UNLOCK_DEVICE') {
     device.isLocked = false; device.status = 'active';
     device.lockMessage = ''; device.lockPhone = '';
+    Object.assign(customerUpdate, {
+      status: 'active',
+      isDeviceLocked: false,
+      lockReason: '',
+      lastUnlockedAt: new Date(),
+    });
   } else if (command === 'OFFLINE_UNLOCK') {
     device.isLocked = false; device.status = 'active';
     device.lockMessage = ''; device.lockPhone = '';
+    Object.assign(customerUpdate, {
+      status: 'active',
+      isDeviceLocked: false,
+      lockReason: '',
+      lastUnlockedAt: new Date(),
+    });
   } else if (command === 'UNENROLL' || command === 'UNENROLL_DEVICE') {
     device.status = 'removed';
     device.isLocked = false;
@@ -75,6 +105,11 @@ const applyStateChange = async (device, command, payload) => {
     device.mdmActive = false;
     device.lockMessage = '';
     device.lockPhone = '';
+    Object.assign(customerUpdate, {
+      status: 'removed',
+      isDeviceLocked: false,
+      lockReason: 'key_removed',
+    });
   } else if (command === 'ACTIVE_RESTRICTION') {
     device.status = 'active';
     device.mdmActive = true;
@@ -89,6 +124,11 @@ const applyStateChange = async (device, command, payload) => {
     device.isEnrolled = true;
     device.lockMessage = '';
     device.lockPhone = '';
+    Object.assign(customerUpdate, {
+      status: 'removed',
+      isDeviceLocked: false,
+      lockReason: 'key_removed',
+    });
   } else if (command === 'DEBUGGING_ON' || command === 'DEBUGGING_OFF') {
     device.mdmActive = true;
   } else if (command === 'WIPE') {
@@ -108,8 +148,17 @@ const applyStateChange = async (device, command, payload) => {
     device.lockPhone   = '';
     device.releasedAt  = new Date();
     device.releaseNote = payload?.note || 'EMI complete — device released by admin';
+    Object.assign(customerUpdate, {
+      status: 'closed',
+      isDeviceLocked: false,
+      lockReason: '',
+    });
   }
+  device.lastCommandAt = new Date();
   await device.save();
+  if (device.customerId && Object.keys(customerUpdate).length) {
+    await Customer.findByIdAndUpdate(device.customerId, customerUpdate);
+  }
 };
 
 // ══════════════════════════════════════════════════════════
@@ -154,7 +203,8 @@ const sendCommand = async (req, res) => {
     //   - GET_NUMBER: SIM card info fetch karne ke liye
     //   - ACTIVE_RESTRICTION: Admin dubara protection activate kare
     const ALLOWED_ON_REMOVED = new Set([
-      'ACTIVE_RESTRICTION', 'RUNNING_KEY_REMOVE', 'RELEASE_DEVICE', 'GET_LOCATION', 'GET_NUMBER'
+      'ACTIVE_RESTRICTION', 'RUNNING_KEY_REMOVE', 'UNENROLL_DEVICE',
+      'RELEASE_DEVICE', 'GET_LOCATION', 'GET_NUMBER'
     ]);
     if (device.status === 'removed' && !ALLOWED_ON_REMOVED.has(cmd)) {
       return res.status(403).json({
@@ -273,7 +323,10 @@ const pollCommands = async (req, res) => {
     };
     if (device.status === 'removed') {
       commandQuery.commandType = {
-        $in: ['ACTIVE_RESTRICTION', 'RUNNING_KEY_REMOVE', 'RELEASE_DEVICE', 'GET_LOCATION', 'GET_NUMBER'],
+        $in: [
+          'ACTIVE_RESTRICTION', 'RUNNING_KEY_REMOVE', 'UNENROLL_DEVICE',
+          'RELEASE_DEVICE', 'GET_LOCATION', 'GET_NUMBER',
+        ],
       };
     }
     if (device.status === 'released') commandQuery.commandType = 'RELEASE_DEVICE';

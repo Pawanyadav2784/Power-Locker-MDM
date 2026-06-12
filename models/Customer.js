@@ -6,8 +6,25 @@ const emiPaymentSchema = new mongoose.Schema({
   method:      { type: String, enum: ['cash', 'online', 'upi', 'bank', 'other'], default: 'cash' },
   referenceNo: { type: String, default: '' },
   note:        { type: String, default: '' },
+  emiId:       { type: String, default: '' },
+  installmentNo: { type: Number, default: 0 },
+  action:      { type: String, enum: ['paid', 'reopened', 'adjustment'], default: 'paid' },
+  overdueAmount: { type: Number, default: 0 },
   recordedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { _id: true });
+
+const emiInstallmentSchema = new mongoose.Schema({
+  installmentNo: { type: Number, required: true },
+  dueDate:        { type: Date, required: true },
+  amount:         { type: Number, default: 0 },
+  overdueAmount:  { type: Number, default: 0 },
+  status:         { type: String, enum: ['pending', 'paid'], default: 'pending' },
+  paymentMode:    { type: String, enum: ['cash', 'online', 'upi', 'bank', 'other'], default: 'cash' },
+  paidAt:         { type: Date, default: null },
+  referenceNo:    { type: String, default: '' },
+  note:           { type: String, default: '' },
+  updatedBy:      { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+}, { timestamps: true });
 
 const customerSchema = new mongoose.Schema({
   // ── Personal Details ───────────────────────────────────────
@@ -40,6 +57,7 @@ const customerSchema = new mongoose.Schema({
 
   // ── Product Details ────────────────────────────────────────
   productName:    { type: String, default: '' },
+  productImages:  [{ type: String }],
   productPrice:   { type: Number, default: 0 },
   downPayment:    { type: Number, default: 0 },
   balancePayment: { type: Number, default: 0 },
@@ -73,6 +91,7 @@ const customerSchema = new mongoose.Schema({
 
   // ── EMI Payment History ────────────────────────────────────
   emiHistory: [emiPaymentSchema],
+  emiSchedule: [emiInstallmentSchema],
 
   // ── Status ────────────────────────────────────────────────
   status: {
@@ -92,8 +111,12 @@ const customerSchema = new mongoose.Schema({
   // ── Documents ──────────────────────────────────────────────
   agreementUrl:       { type: String, default: '' },
   photo:              { type: String, default: '' },   // Customer image
+  profileImage:       { type: String, default: '' },   // P Locker alias
   customerSignature:  { type: String, default: '' },   // Signature image URL
+  signature:          { type: String, default: '' },   // P Locker alias
   aadharPhoto:        { type: String, default: '' },
+  aadhaarFront:       { type: String, default: '' },
+  aadhaarBack:        { type: String, default: '' },
   panPhoto:           { type: String, default: '' },
 
   // ── Notes ─────────────────────────────────────────────────
@@ -113,5 +136,6 @@ customerSchema.index({ phone: 1 });
 customerSchema.index({ retailerId: 1, status: 1 });
 customerSchema.index({ nextEmiDate: 1, status: 1 });
 customerSchema.index({ qrCode: 1 });
+customerSchema.index({ 'emiSchedule._id': 1 });
 
 module.exports = mongoose.model('Customer', customerSchema);

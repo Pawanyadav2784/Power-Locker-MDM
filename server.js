@@ -24,6 +24,8 @@ const qrRoutes              = require('./routes/qr');
 const scheduledCmdRoutes    = require('./routes/scheduledCommands');
 const downloadPageRoutes    = require('./routes/downloadPage'); // ✅ APK download page
 const profileRoutes         = require('./routes/profileRoutes'); // ✅ Profile CRUD + pic upload
+const deviceCompatibilityRoutes = require('./routes/deviceCompatibilityRoutes');
+const mdmCompatibilityRoutes = require('./routes/mdmCompatibilityRoutes');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -64,6 +66,8 @@ app.use('/api/posts',              postsRoutes);
 app.use('/api/sms',                smsRoutes);
 app.use('/api/appupdate',          appUpdateRoutes);
 app.use('/api/v1/auth',            authRoutes);       // APK backward compat
+app.use('/api/v1/device',          deviceCompatibilityRoutes); // P Locker QR compatibility
+app.use('/api/mdm',                mdmCompatibilityRoutes); // P Locker MDM compatibility
 app.use('/api/profile',            profileRoutes);    // ✅ Profile update + pic upload
 app.use('/api',                    miscRoutes);       // misc last
 
@@ -81,29 +85,13 @@ app.use((req, res) => {
 app.use(errorHandler);
 
 // ─── Cron: Execute Scheduled Commands (every minute) ─────
-const ScheduledCommand = require('./models/ScheduledCommand');
-const Device = require('./models/Device');
-const { sendFCM } = require('./utils/fcmHelper');
+const { executeDueScheduledCommands } = require('./utils/scheduledCommandExecutor');
 
 cron.schedule('* * * * *', async () => {
   try {
-    const now = new Date();
-    const due = await ScheduledCommand.find({ status: 'pending', scheduledAt: { $lte: now } }).populate('deviceId');
-    for (const cmd of due) {
-      const device = cmd.deviceId;
-      if (device?.fcmToken) {
-        await sendFCM(device.fcmToken, cmd.commandType, cmd.label, {
-          command: cmd.commandType, deviceId: device.deviceId, ...cmd.payload,
-        });
-      }
-      if (cmd.commandType === 'LOCK_DEVICE') {
-        await Device.findByIdAndUpdate(device._id, { isLocked: true, status: 'locked' });
-      } else if (cmd.commandType === 'UNLOCK_DEVICE') {
-        await Device.findByIdAndUpdate(device._id, { isLocked: false, status: 'active' });
-      }
-      cmd.status = 'executed'; cmd.executedAt = now;
-      await cmd.save();
-      console.log(`✅ Cron executed: ${cmd.commandType} → ${device?.deviceId}`);
+    const results = await executeDueScheduledCommands();
+    for (const result of results) {
+      console.log(`Scheduled command ${result.status}: ${result.scheduleId}`);
     }
   } catch (err) {
     console.error('Cron error:', err.message);

@@ -5,11 +5,16 @@ const Device   = require('../models/Device');
 const Customer = require('../models/Customer');
 const User     = require('../models/User');
 const { protect } = require('../middleware/auth');
+const {
+  getDashboardPLocker,
+  getKeySummaryPLocker,
+} = require('../controllers/dashboardCompatibilityController');
 
 // ════════════════════════════════════════════════════════════
 //  GET /api/dashboard
 // ════════════════════════════════════════════════════════════
-router.get('/', protect, async (req, res) => {
+router.get('/', protect, getDashboardPLocker);
+router.get('/legacy', protect, async (req, res) => {
   try {
     const isAdmin   = req.user.role === 'super_admin';
     const uid       = new mongoose.Types.ObjectId(req.user._id);
@@ -150,7 +155,8 @@ router.get('/monthly-registrations', protect, async (req, res) => {
 // ════════════════════════════════════════════════════════════
 //  GET /api/dashboard/key-summary
 // ════════════════════════════════════════════════════════════
-router.get('/key-summary', protect, async (req, res) => {
+router.get('/key-summary', protect, getKeySummaryPLocker);
+router.get('/key-summary/legacy', protect, async (req, res) => {
   try {
     const uid   = new mongoose.Types.ObjectId(req.user._id);
     const query = req.user.role === 'super_admin' ? {} : { retailerId: uid };

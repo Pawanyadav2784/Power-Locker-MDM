@@ -6,6 +6,13 @@ const express = require('express');
 const router  = express.Router();
 
 const { protect, adminOnly } = require('../middleware/auth');
+const keyCompatibilityUpload = require('../middleware/keyCompatibilityUpload');
+const {
+  getKeyDetailsPLocker,
+  getKeyTransactionsPLocker,
+  removeKeyPLocker,
+  updateKeyPLocker,
+} = require('../controllers/keyCompatibilityController');
 const {
   generateKeys, generateSelf, bulkCredit, setBalance,
   transferKeys,
@@ -42,6 +49,7 @@ router.get('/ledger/all',          protect, adminOnly, getLedgerAll);
 router.get('/ledger/summary',      protect, adminOnly, getLedgerSummary);
 router.get('/ledger/user/:userId', protect, adminOnly, getLedgerByUser);
 router.get('/ledger',              protect,            getLedger);
+router.get('/transactions',        protect,            getKeyTransactionsPLocker);
 
 // ── Key Requests ──
 router.post('/request/approve', protect, adminOnly, approveKeyRequest);
@@ -51,5 +59,9 @@ router.post('/request',         protect,            requestKeys);
 // ── My Stats ──
 router.get('/my-keys', protect, getMyKeys);
 
-module.exports = router;
+// P Locker key detail/edit/remove compatibility. Keep dynamic routes last.
+router.get('/:id',    protect,                         getKeyDetailsPLocker);
+router.put('/:id',    protect, keyCompatibilityUpload, updateKeyPLocker);
+router.delete('/:id', protect,                         removeKeyPLocker);
 
+module.exports = router;

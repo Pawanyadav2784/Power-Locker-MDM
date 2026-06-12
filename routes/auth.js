@@ -9,6 +9,20 @@
 const express = require('express');
 const router  = express.Router();
 const { protect, adminOnly } = require('../middleware/auth');
+const upload = require('../middleware/upload');
+const {
+  changeManagedPassword,
+  changeOwnPassword,
+  createVendor,
+  getVendor,
+  hierarchy,
+  listVendors,
+  toggleVendor,
+  updateFrpEmail,
+  updateVendor,
+  uploadDocument,
+  uploadProfile,
+} = require('../controllers/vendorCompatibilityController');
 
 const {
   login,
@@ -45,6 +59,28 @@ router.put('/set-password', protect, changePasswordSelf);
 router.put('/admin-credentials', protect, adminOnly, changeAdminCredentials);
 
 router.get('/logout', protect, logout);            // GET — session clear
+
+// P Locker compatibility aliases. Existing auth/vendor APIs remain unchanged.
+const vendorUpload = upload.fields([
+  { name: 'profileImage', maxCount: 1 },
+  { name: 'image', maxCount: 1 },
+  { name: 'signature', maxCount: 1 },
+]);
+
+router.post('/vendor/create-form', protect, vendorUpload, createVendor);
+router.post('/register/vendor', protect, vendorUpload, createVendor);
+router.get('/vendor/all', protect, listVendors);
+router.get('/vendor/hierarchy', protect, hierarchy);
+router.put('/vendor/toggle', protect, toggleVendor);
+router.put('/vendor/update/:id', protect, vendorUpload, updateVendor);
+router.put('/vendor/update', protect, vendorUpload, updateVendor);
+router.get('/vendor/:id', protect, getVendor);
+
+router.put('/change-password', protect, changeOwnPassword);
+router.put('/change-password-admin', protect, changeManagedPassword);
+router.put('/frp-email/update', protect, updateFrpEmail);
+router.put('/upload/profile', protect, upload.single('image'), uploadProfile);
+router.put('/upload/id', protect, upload.single('image'), uploadDocument);
 
 // ══════════════════════════════════════════════════════════
 //  👑 ADMIN ONLY

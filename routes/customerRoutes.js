@@ -1,6 +1,13 @@
 const express = require('express');
 const router  = express.Router();
 const { protect } = require('../middleware/auth');
+const customerEnrollmentUpload = require('../middleware/customerEnrollmentUpload');
+const { enrollCustomerDevice } = require('../controllers/customerEnrollmentController');
+const { getAllCustomersPLocker } = require('../controllers/customerCompatibilityController');
+const {
+  getUpcomingEmisPLocker,
+  updateEmiPLocker,
+} = require('../controllers/emiCompatibilityController');
 const {
   addCustomer, getAllCustomers, getCustomerById,
   updateCustomer, deleteCustomer,
@@ -16,6 +23,8 @@ const {
 router.get('/stats',                protect, getCustomerStats);
 router.get('/search',               protect, searchCustomers);
 router.get('/overdue',              protect, getOverdueCustomers);
+router.get('/upcomingEmis',         protect, getUpcomingEmisPLocker);
+router.put('/emi/:emiId',           protect, updateEmiPLocker);
 
 // ── Bulk / Auto-lock ──────────────────────────────────────
 router.post('/bulk-action',         protect, bulkAction);
@@ -26,9 +35,10 @@ router.post('/action',              protect, customerAction);
 router.post('/key-action',          protect, keyAction);   // Retailer APK alias
 
 // ── CRUD ─────────────────────────────────────────────────
+router.post('/customerAdd',         protect, customerEnrollmentUpload, enrollCustomerDevice);
 router.post('/add',                 protect, addCustomer);
 router.get('/',                     protect, getAllCustomers);
-router.get('/getAllCustomerWithDevices', protect, getAllCustomers); // backward compat
+router.get('/getAllCustomerWithDevices', protect, getAllCustomersPLocker);
 router.get('/:id',                  protect, getCustomerById);
 router.post('/getCustomerById',     protect, getCustomerById);     // backward compat
 router.put('/:id',                  protect, updateCustomer);

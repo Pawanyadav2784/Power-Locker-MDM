@@ -1,29 +1,91 @@
 const express = require('express');
 const router = express.Router();
 const ScheduledCommand = require('../models/ScheduledCommand');
-const Device = require('../models/Device');
 const Command = require('../models/Command');
 const { protect } = require('../middleware/auth');
 const { sendFCM } = require('../utils/fcmHelper');
+const { findAccessibleDevice } = require('../utils/deviceAccess');
+
+const SCHEDULE_COMMANDS = new Set([
+  'LOCK_DEVICE',
+  'UNLOCK_DEVICE',
+  'REBOOT',
+  'WIPE',
+  'MESSAGE',
+  'PLAY_ALERT',
+]);
+const DELIVERY_METHODS = new Set(['fcm', 'sms', 'both']);
 
 // POST /api/scheduled-commands/
 router.post('/', protect, async (req, res) => {
   try {
-    const { device_id, command_type, schedule_type, scheduled_at, label, delivery_method, payload } = req.body;
+    const {
+      device_id,
+      command_type,
+      schedule_type,
+      scheduled_at,
+      label,
+      delivery_method,
+      payload,
+    } = req.body;
+    const deviceIdentifier = String(device_id || '').trim();
+    const commandType = String(command_type || '').trim().toUpperCase();
+    const scheduleType = String(schedule_type || 'one_time').trim().toLowerCase();
+    const deliveryMethod = String(delivery_method || 'fcm').trim().toLowerCase();
+    const scheduledAt = new Date(scheduled_at);
 
-    // Find device by deviceId string or _id
-    const device = await Device.findOne(
-      device_id.length === 24 ? { _id: device_id } : { deviceId: device_id }
-    );
-    if (!device) return res.status(404).json({ success: false, message: 'Device not found' });
+    if (!deviceIdentifier || !commandType || !scheduled_at) {
+      return res.status(400).json({
+        success: false,
+        message: 'device_id, command_type aur scheduled_at required hain.',
+      });
+    }
+    if (!SCHEDULE_COMMANDS.has(commandType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Unsupported scheduled command.',
+      });
+    }
+    if (!['one_time', 'recurring'].includes(scheduleType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'schedule_type one_time ya recurring hona chahiye.',
+      });
+    }
+    if (!DELIVERY_METHODS.has(deliveryMethod)) {
+      return res.status(400).json({
+        success: false,
+        message: 'delivery_method fcm, sms ya both hona chahiye.',
+      });
+    }
+    if (Number.isNaN(scheduledAt.getTime()) || scheduledAt <= new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: 'scheduled_at valid future date honi chahiye.',
+      });
+    }
+
+    const device = await findAccessibleDevice(req.user, deviceIdentifier);
+    if (!device) {
+      return res.status(404).json({
+        success: false,
+        message: 'Device not found ya access denied.',
+      });
+    }
+    if (['removed', 'released'].includes(device.status)) {
+      return res.status(409).json({
+        success: false,
+        message: 'Removed ya released device par schedule allowed nahi hai.',
+      });
+    }
 
     const cmd = await ScheduledCommand.create({
       deviceId: device._id,
-      commandType: command_type,
-      scheduleType: schedule_type || 'one_time',
-      scheduledAt: new Date(scheduled_at),
+      commandType,
+      scheduleType,
+      scheduledAt,
       label: label || '',
-      deliveryMethod: delivery_method || 'fcm',
+      deliveryMethod,
       payload: payload || {},
       createdBy: req.user._id,
     });
@@ -31,7 +93,7 @@ router.post('/', protect, async (req, res) => {
     const localSchedulePayload = {
       ...(payload || {}),
       scheduleId: String(cmd._id),
-      scheduleCommandType: command_type,
+      scheduleCommandType: commandType,
       scheduledAt: cmd.scheduledAt.toISOString(),
       label: label || '',
     };
@@ -40,7 +102,7 @@ router.post('/', protect, async (req, res) => {
       deviceId: device._id,
       commandType: 'SCHEDULER_LOCK',
       payload: localSchedulePayload,
-      label: label || `Schedule ${command_type}`,
+      label: label || `Schedule ${commandType}`,
       deliveryMethod: device.fcmToken ? 'fcm' : 'poll',
       status: device.fcmToken ? 'sent' : 'pending',
       sentAt: device.fcmToken ? new Date() : undefined,
@@ -52,7 +114,7 @@ router.post('/', protect, async (req, res) => {
       setupDelivery = await sendFCM(
         device.fcmToken,
         'Schedule Command',
-        label || command_type,
+        label || commandType,
         {
           command: 'SCHEDULER_LOCK',
           commandType: 'SCHEDULER_LOCK',
@@ -89,7 +151,9 @@ router.post('/', protect, async (req, res) => {
 router.get('/', protect, async (req, res) => {
   try {
     const { page = 1, limit = 20, status } = req.query;
-    const query = { createdBy: req.user._id };
+    const query = req.user.role === 'super_admin'
+      ? {}
+      : { createdBy: req.user._id };
     if (status) query.status = status;
     const total = await ScheduledCommand.countDocuments(query);
     const commands = await ScheduledCommand.find(query)
@@ -106,7 +170,20 @@ router.get('/', protect, async (req, res) => {
 // DELETE /api/scheduled-commands/:id
 router.delete('/:id', protect, async (req, res) => {
   try {
-    await ScheduledCommand.findByIdAndUpdate(req.params.id, { status: 'cancelled' });
+    const query = req.user.role === 'super_admin'
+      ? { _id: req.params.id }
+      : { _id: req.params.id, createdBy: req.user._id };
+    const command = await ScheduledCommand.findOneAndUpdate(
+      { ...query, status: 'pending' },
+      { status: 'cancelled' },
+      { new: true }
+    );
+    if (!command) {
+      return res.status(404).json({
+        success: false,
+        message: 'Pending schedule not found ya access denied.',
+      });
+    }
     res.json({ success: true, message: 'Command cancelled' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

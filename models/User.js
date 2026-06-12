@@ -37,6 +37,12 @@ const userSchema = new mongoose.Schema({
   address:         { type: String, default: '' },
   gst:             { type: String, default: '' },
   frpEmail:        { type: String, default: '' },
+  frpEmailHistory: [{
+    oldEmail:  { type: String, default: '' },
+    newEmail:  { type: String, default: '' },
+    changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    changedAt: { type: Date, default: Date.now },
+  }],
   growthExecutive: { type: String, default: '' },   // dropdown in form
 
   // ─── Role & Hierarchy ──────────────────────────────────

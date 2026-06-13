@@ -323,8 +323,7 @@ const updateVendorByBody = async (req, res) => {
       const target = await User.findById(id);
       if (!target) return res.status(404).json({ success: false, message: 'Vendor not found' });
       const descendants = await getManagedUserIds(req.user);
-      const isDescendant = descendants.some(d => String(d) === String(target._id));
-      if (!isDescendant || String(target._id) === String(req.user._id))
+      if (!isDescendant)
         return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
@@ -354,7 +353,7 @@ const toggleVendorStatus = async (req, res) => {
     let isAllowed = isAdmin;
     if (!isAdmin) {
       const descendants = await getManagedUserIds(req.user);
-      isAllowed = descendants.some(d => String(d) === String(vendor._id)) && String(vendor._id) !== String(req.user._id);
+      isAllowed = descendants.some(d => String(d) === String(vendor._id));
     }
     if (!isAllowed)
       return res.status(403).json({ success: false, message: 'Access denied' });
@@ -388,7 +387,7 @@ const softDeleteVendor = async (req, res) => {
     let isAllowed = isAdmin;
     if (!isAdmin) {
       const descendants = await getManagedUserIds(req.user);
-      isAllowed = descendants.some(d => String(d) === String(target._id)) && String(target._id) !== String(req.user._id);
+      isAllowed = descendants.some(d => String(d) === String(target._id));
     }
     if (!isAllowed)
       return res.status(403).json({ success: false, message: 'Access denied' });

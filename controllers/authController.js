@@ -21,7 +21,17 @@ const login = async (req, res) => {
     if (!email || !password)
       return res.status(400).json({ success: false, message: 'Email and password required' });
 
-    const user = await User.findOne({ email }).select('+password +loginAttempts +lockUntil');
+    const user = await User.findOne({ email })
+      .select('+password +loginAttempts +lockUntil')
+      .populate({
+        path: 'parentId',
+        populate: {
+          path: 'parentId',
+          populate: {
+            path: 'parentId'
+          }
+        }
+      });
     if (!user)
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
 
@@ -79,7 +89,20 @@ const login = async (req, res) => {
 // @desc    Get profile
 // @route   GET /api/auth/profile
 const getProfile = async (req, res) => {
-  res.json({ success: true, user: req.user });
+  try {
+    await req.user.populate({
+      path: 'parentId',
+      populate: {
+        path: 'parentId',
+        populate: {
+          path: 'parentId'
+        }
+      }
+    });
+    res.json({ success: true, user: req.user.toPublicProfile() });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 };
 
 // @desc    Update profile
@@ -89,7 +112,16 @@ const updateProfile = async (req, res) => {
     const allowed = ['name', 'phone', 'company', 'city', 'state', 'address', 'gst', 'frpEmail'];
     allowed.forEach(f => { if (req.body[f] !== undefined) req.user[f] = req.body[f]; });
     await req.user.save();
-    res.json({ success: true, user: req.user });
+    await req.user.populate({
+      path: 'parentId',
+      populate: {
+        path: 'parentId',
+        populate: {
+          path: 'parentId'
+        }
+      }
+    });
+    res.json({ success: true, user: req.user.toPublicProfile() });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

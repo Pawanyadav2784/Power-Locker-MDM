@@ -16,7 +16,17 @@ const { deleteFromCloudinary } = require('../config/cloudinary');
 // ══════════════════════════════════════════════════════════
 const getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password -otp -otpExpiry -activeToken');
+    const user = await User.findById(req.user._id)
+      .select('-password -otp -otpExpiry -activeToken')
+      .populate({
+        path: 'parentId',
+        populate: {
+          path: 'parentId',
+          populate: {
+            path: 'parentId'
+          }
+        }
+      });
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     res.json({ success: true, data: user.toPublicProfile() });
   } catch (err) {
@@ -38,6 +48,15 @@ const updateProfile = async (req, res) => {
     });
 
     await user.save();
+    await user.populate({
+      path: 'parentId',
+      populate: {
+        path: 'parentId',
+        populate: {
+          path: 'parentId'
+        }
+      }
+    });
     res.json({ success: true, message: 'Profile updated successfully', data: user.toPublicProfile() });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

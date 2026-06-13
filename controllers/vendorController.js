@@ -154,11 +154,18 @@ const createVendor = async (req, res) => {
       if (!parentUser.isActive)
         return res.status(400).json({ success: false, message: `Parent account (${parentUser.name}) abhi active nahi hai` });
 
-      if (parentUser.role !== requiredParentRole)
+      let isValidParent = parentUser.role === requiredParentRole;
+      if (targetRole === 'retailer') {
+        isValidParent = parentUser.role === 'sub_distributor' || parentUser.role === 'distributor';
+      }
+
+      if (!isValidParent) {
+        const expectedRoleStr = targetRole === 'retailer' ? 'sub_distributor ya distributor' : requiredParentRole;
         return res.status(400).json({
           success: false,
-          message: `${targetRole.replace(/_/g, ' ')} ke liye parent ek ${requiredParentRole.replace(/_/g, ' ')} hona chahiye. Aapne diya: ${parentUser.role.replace(/_/g, ' ')}`,
+          message: `${targetRole.replace(/_/g, ' ')} ke liye parent ek ${expectedRoleStr.replace(/_/g, ' ')} hona chahiye. Aapne diya: ${parentUser.role.replace(/_/g, ' ')}`,
         });
+      }
 
       resolvedParentId = rawParentId;
     }

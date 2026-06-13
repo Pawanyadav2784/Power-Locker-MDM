@@ -167,11 +167,6 @@ const checkIn = async (req, res) => {
     if (device.status === 'released') {
       commandQuery.commandType = 'RELEASE_DEVICE';
     }
-    commandQuery.$or = [
-      { nextRetryAt: { $exists: false } },
-      { nextRetryAt: null },
-      { nextRetryAt: { $lte: new Date() } },
-    ];
     const pendingCommands = await Command.find(commandQuery).sort({ createdAt: 1 });
     res.json({
       success: true,

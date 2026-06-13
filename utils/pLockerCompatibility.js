@@ -183,7 +183,14 @@ function serializeCustomer(req, customer) {
     loanBy: customer.loanProvider || '',
     key_type: KEY_CODE_BY_TYPE[customer.keyType] || '2',
     retailer_id: retailerId,
+    retailerName: customer.retailerId && typeof customer.retailerId === 'object'
+      ? customer.retailerId.name || customer.retailerId.company || ''
+      : '',
+    retailer_name: customer.retailerId && typeof customer.retailerId === 'object'
+      ? customer.retailerId.name || customer.retailerId.company || ''
+      : '',
     brand_id: '',
+
     bank_id: '',
     author: idOf(customer.createdBy),
     is_link: Boolean(device),
